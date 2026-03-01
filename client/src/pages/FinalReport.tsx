@@ -47,6 +47,7 @@ interface OfferingData {
   lfEnabled: boolean;
   lfUnit: string;
   egbValue: string;
+  egbType: 'mill' | 'purchase';
   customDivisor: string;
   remarks: string;
 }
@@ -69,6 +70,7 @@ interface FinalPriceFormData {
   lf: string;
   lfUnit: string;
   egbValue: string;
+  egbType: 'mill' | 'purchase';
   customDivisor: string;
   finalPrice: string;
   remarks: string;
@@ -78,10 +80,9 @@ interface FinalPriceFormData {
 const labelStyle: React.CSSProperties = { display: 'block', marginBottom: '6px', fontWeight: '600', color: '#333', fontSize: '13px' };
 const inputStyle: React.CSSProperties = { width: '100%', padding: '10px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#fff' };
 const radioLabelStyle: React.CSSProperties = { fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' };
-const radioGroupStyle: React.CSSProperties = { display: 'flex', gap: '12px', justifyContent: 'center' };
-const fieldGroupStyle: React.CSSProperties = { marginBottom: '16px' };
-const headerCellStyle: React.CSSProperties = { border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' };
-const dataCellStyle: React.CSSProperties = { border: '1px solid #ddd', padding: '6px', fontSize: '11px' };
+
+const headerCellStyle: React.CSSProperties = { border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' };
+const dataCellStyle: React.CSSProperties = { border: '1px solid #ddd', padding: '6px', fontSize: '11px', whiteSpace: 'nowrap' };
 
 const FinalReport: React.FC = () => {
   const { user } = useAuth();
@@ -99,7 +100,7 @@ const FinalReport: React.FC = () => {
   const [offerData, setOfferData] = useState<OfferingData>({
     offerRate: '',
     sute: '',
-    suteUnit: 'per_kg',
+    suteUnit: 'per_bag',
     baseRateType: 'PD_LOOSE',
     baseRateUnit: 'per_bag',
     offerBaseRateValue: '',
@@ -115,13 +116,14 @@ const FinalReport: React.FC = () => {
     lfEnabled: false,
     lfUnit: 'per_bag',
     egbValue: '',
+    egbType: 'mill' as 'mill' | 'purchase',
     customDivisor: '',
     remarks: ''
   });
 
   const [finalData, setFinalData] = useState<FinalPriceFormData>({
     finalSute: '',
-    finalSuteUnit: 'per_kg',
+    finalSuteUnit: 'per_bag',
     finalBaseRate: '',
     baseRateType: 'PD_LOOSE',
     suteEnabled: false,
@@ -137,6 +139,7 @@ const FinalReport: React.FC = () => {
     lf: '',
     lfUnit: 'per_bag',
     egbValue: '',
+    egbType: 'mill' as 'mill' | 'purchase',
     customDivisor: '',
     finalPrice: '',
     remarks: ''
@@ -152,7 +155,7 @@ const FinalReport: React.FC = () => {
 
   // Server-side Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 50;
+  const pageSize = 100;
   const [totalPages, setTotalPages] = useState(1);
   const [totalEntries, setTotalEntries] = useState(0);
 
@@ -160,6 +163,7 @@ const FinalReport: React.FC = () => {
   const brokersList = useMemo(() => Array.from(new Set(entries.map(e => e.brokerName))).sort(), [entries]);
   const varietiesList = useMemo(() => Array.from(new Set(entries.map(e => e.variety))).sort(), [entries]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadEntries();
   }, [currentPage]);
@@ -259,6 +263,7 @@ const FinalReport: React.FC = () => {
           lfEnabled: d.lfEnabled || false,
           lfUnit: d.lfUnit || d.baseRateUnit || 'per_bag',
           egbValue: d.egbValue?.toString() || '',
+          egbType: (d.egbType as 'mill' | 'purchase') || ((d.egbValue && parseFloat(d.egbValue) > 0) ? 'purchase' : 'mill'),
           customDivisor: d.customDivisor?.toString() || '',
           remarks: ''
         });
@@ -291,6 +296,7 @@ const FinalReport: React.FC = () => {
       lfEnabled: false,
       lfUnit: entry.perUnit || 'per_bag',
       egbValue: entry.egb?.toString() || '',
+      egbType: 'mill' as 'mill' | 'purchase',
       customDivisor: entry.customDivisor?.toString() || '',
       remarks: ''
     });
@@ -323,7 +329,8 @@ const FinalReport: React.FC = () => {
           lfValue: offerData.lfValue ? parseFloat(offerData.lfValue) : 0,
           lfEnabled: offerData.lfEnabled,
           lfUnit: offerData.lfUnit,
-          egbValue: offerData.egbValue ? parseFloat(offerData.egbValue) : 0,
+          egbValue: offerData.egbType === 'mill' ? 0 : (offerData.egbValue ? parseFloat(offerData.egbValue) : 0),
+          egbType: offerData.egbType,
           customDivisor: offerData.customDivisor ? parseFloat(offerData.customDivisor) : null,
           remarks: offerData.remarks
         },
@@ -354,7 +361,7 @@ const FinalReport: React.FC = () => {
       if (d) {
         setFinalData({
           finalSute: d.finalSute?.toString() || d.sute?.toString() || '',
-          finalSuteUnit: d.finalSuteUnit || d.suteUnit || 'per_kg',
+          finalSuteUnit: d.finalSuteUnit || d.suteUnit || 'per_bag',
           finalBaseRate: d.finalBaseRate?.toString() || d.offerBaseRateValue?.toString() || '',
           baseRateType: d.baseRateType || 'PD_LOOSE',
           suteEnabled: d.suteEnabled !== false,
@@ -370,6 +377,7 @@ const FinalReport: React.FC = () => {
           lf: d.lf?.toString() || '',
           lfUnit: d.lfUnit || d.baseRateUnit || 'per_bag',
           egbValue: d.egbValue?.toString() || '',
+          egbType: (d.egbType as 'mill' | 'purchase') || ((d.egbValue && parseFloat(d.egbValue) > 0) ? 'purchase' : 'mill'),
           customDivisor: d.customDivisor?.toString() || '',
           finalPrice: d.finalPrice?.toString() || entry.finalPrice?.toString() || '',
           remarks: ''
@@ -377,11 +385,11 @@ const FinalReport: React.FC = () => {
       }
     } catch {
       setFinalData({
-        finalSute: '', finalSuteUnit: 'per_kg', finalBaseRate: '', baseRateType: 'PD_LOOSE',
+        finalSute: '', finalSuteUnit: 'per_bag', finalBaseRate: '', baseRateType: 'PD_LOOSE',
         suteEnabled: true, moistureEnabled: true,
         hamaliEnabled: false, brokerageEnabled: false, lfEnabled: false,
         moistureValue: '', hamali: '', hamaliUnit: 'per_bag',
-        brokerage: '', brokerageUnit: 'per_bag', lf: '', lfUnit: 'per_bag', egbValue: '', customDivisor: '',
+        brokerage: '', brokerageUnit: 'per_bag', lf: '', lfUnit: 'per_bag', egbValue: '', egbType: 'mill' as 'mill' | 'purchase', customDivisor: '',
         finalPrice: entry.finalPrice?.toString() || '', remarks: ''
       });
     }
@@ -413,7 +421,8 @@ const FinalReport: React.FC = () => {
           brokerageUnit: finalData.brokerageUnit,
           lf: finalData.lf ? parseFloat(finalData.lf) : null,
           lfUnit: finalData.lfUnit,
-          egbValue: finalData.egbValue ? parseFloat(finalData.egbValue) : null,
+          egbValue: finalData.egbType === 'mill' ? 0 : (finalData.egbValue ? parseFloat(finalData.egbValue) : null),
+          egbType: finalData.egbType,
           customDivisor: finalData.customDivisor ? parseFloat(finalData.customDivisor) : null,
           finalPrice: finalData.finalPrice ? parseFloat(finalData.finalPrice) : null,
           isFinalized: true
@@ -464,7 +473,7 @@ const FinalReport: React.FC = () => {
             display: 'flex', alignItems: 'center', gap: '6px'
           }}
         >
-          {filtersVisible ? '✕ Hide Filters' : '🔍 Filters'}
+          {filtersVisible ? '✕ Hide Filters' : 'Filters'}
         </button>
         {filtersVisible && (
           <div style={{
@@ -521,618 +530,530 @@ const FinalReport: React.FC = () => {
         )}
       </div>
 
-      {/* Table */}
+      {/* Table grouped by Date then Broker */}
       <div style={{ overflowX: 'auto', backgroundColor: 'white', border: '1px solid #ddd' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-          <thead>
-            <tr style={{ backgroundColor: '#4a90e2', color: 'white' }}>
-              <th style={headerCellStyle}>SL</th>
-              <th style={headerCellStyle}>Broker & Date</th>
-              <th style={headerCellStyle}>Bags</th>
-              <th style={headerCellStyle}>Pkg</th>
-              <th style={headerCellStyle}>Variety</th>
-              <th style={headerCellStyle}>Party Name</th>
-              <th style={headerCellStyle}>Paddy Location</th>
-              <th style={headerCellStyle}>Offering Details</th>
-              <th style={headerCellStyle}>Final Price Details</th>
-              <th style={headerCellStyle}>Sample Reports</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={10} style={{ textAlign: 'center', padding: '20px', color: '#666' }}>Loading...</td></tr>
-            ) : paginatedEntries.length === 0 ? (
-              <tr><td colSpan={10} style={{ textAlign: 'center', padding: '20px', color: '#999' }}>No entries pending final report</td></tr>
-            ) : (
-              paginatedEntries.map((entry, index) => (
-                <tr key={entry.id} style={{ backgroundColor: index % 2 === 0 ? '#f9f9f9' : 'white' }}>
-                  <td style={{ ...dataCellStyle, textAlign: 'center', fontWeight: '600' }}>{(currentPage - 1) * pageSize + index + 1}</td>
-                  <td style={dataCellStyle}>
-                    <div style={{ fontWeight: 'bold' }}>{entry.brokerName}</div>
-                    <div style={{ color: '#666', fontSize: '10px' }}>{entry.entryDate ? new Date(entry.entryDate).toLocaleDateString('en-IN') : '-'}</div>
-                  </td>
-                  <td style={{ ...dataCellStyle, textAlign: 'right' }}>{entry.bags}</td>
-                  <td style={{ ...dataCellStyle, textAlign: 'center' }}>{entry.packaging || '-'}</td>
-                  <td style={dataCellStyle}>{entry.variety}</td>
-                  <td style={dataCellStyle}>{entry.partyName}</td>
-                  <td style={dataCellStyle}>{entry.location}</td>
-                  <td style={{ ...dataCellStyle, fontSize: '10px', maxWidth: '300px', lineHeight: '1.6' }}>
-                    {(entry.offeringPrice || offeringCache[entry.id]) ? (() => {
-                      const o = offeringCache[entry.id];
-                      const unitLabel = (u: string) => u === 'per_bag' ? 'Per Bag' : u === 'per_quintal' ? 'Per Qtl' : '-';
-                      return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                          <div><strong>Base:</strong> {o?.offerBaseRateValue || '-'} ({(o?.baseRateType || entry.offerBaseRate || '-').replace('_', '/')})</div>
-                          <div><strong>Sute:</strong> {o?.sute || '-'} {o?.suteUnit === 'per_kg' ? '(Per Kg)' : o?.suteUnit === 'per_ton' ? '(Per Ton)' : ''}</div>
-                          <div><strong>Hamali:</strong> {o?.hamaliPerKg || o?.hamali || '-'} <span style={{ color: '#888' }}>({unitLabel(o?.hamaliUnit || 'per_bag')})</span></div>
-                          <div><strong>Bkrg:</strong> {o?.brokerage || '-'} <span style={{ color: '#888' }}>({unitLabel(o?.brokerageUnit || 'per_bag')})</span></div>
-                          <div><strong>LF:</strong> {o?.lf || '-'} <span style={{ color: '#888' }}>({unitLabel(o?.lfUnit || 'per_bag')})</span></div>
-                          <div><strong>EGB:</strong> {(o?.baseRateType || '').toLowerCase().includes('loose') ? (o?.egbValue || '-') : 'N/A'}</div>
-                        </div>
-                      );
-                    })() : '-'}
-                  </td>
-                  <td style={{ ...dataCellStyle, fontSize: '10px', maxWidth: '280px', lineHeight: '1.6' }}>
-                    {(() => {
-                      const o = offeringCache[entry.id];
-                      if (!entry.finalPrice && !o?.finalPrice) return '-';
-                      const unitLabel = (u: string) => u === 'per_bag' ? 'Per Bag' : u === 'per_quintal' ? 'Per Qtl' : '-';
-                      return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                          <div><strong>Final:</strong> ₹{o?.finalPrice || entry.finalPrice}</div>
-                          {o?.finalBaseRate ? <div><strong>Base Rate:</strong> {o.finalBaseRate} ({(o?.baseRateType || entry.offerBaseRate || '-').replace('_', '/')})</div> : null}
-                          {o?.finalSute ? <div><strong>Sute:</strong> {o.finalSute} {o.finalSuteUnit === 'per_kg' ? '(Per Kg)' : '(Per Ton)'}</div> : null}
-                          {o?.hamaliEnabled ? <div><strong>Hamali:</strong> {o.hamaliPerKg || o.hamali || '-'} <span style={{ color: '#888' }}>({unitLabel(o?.hamaliUnit || 'per_bag')})</span></div> : <div style={{ color: '#999' }}>Hamali: No</div>}
-                          {o?.brokerageEnabled ? <div><strong>Bkrg:</strong> {o.brokerage || '-'} <span style={{ color: '#888' }}>({unitLabel(o?.brokerageUnit || 'per_bag')})</span></div> : <div style={{ color: '#999' }}>Bkrg: No</div>}
-                          {o?.lfEnabled ? <div><strong>LF:</strong> {o.lf || '-'} <span style={{ color: '#888' }}>({unitLabel(o?.lfUnit || 'per_bag')})</span></div> : <div style={{ color: '#999' }}>LF: No</div>}
-                          {(o?.baseRateType || '').toLowerCase().includes('loose') && <div><strong>EGB:</strong> {o?.egbValue || '-'}</div>}
-                          {(o?.baseRateType || '').toLowerCase() === 'md_loose' && o?.customDivisor && <div><strong>Divisor:</strong> {o.customDivisor}</div>}
-                        </div>
-                      );
-                    })()}
-                  </td>
-                  <td style={{ ...dataCellStyle, textAlign: 'center' }}>
-                    <div style={{ display: 'flex', gap: '3px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                      {isAdmin && (
-                        <button
-                          onClick={() => handleOpenOfferModal(entry)}
-                          style={{
-                            fontSize: '10px', padding: '4px 8px',
-                            backgroundColor: entry.offeringPrice ? '#3498db' : '#2196F3',
-                            color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer',
-                            fontWeight: '600', minWidth: '70px'
-                          }}
-                        >
-                          {entry.offeringPrice ? 'Edit Offer' : 'Add Offer'}
-                        </button>
-                      )}
-                      {(isAdmin || isManager) && (entry.offeringPrice || offeringCache[entry.id]) && (
-                        <button
-                          onClick={() => handleOpenFinalModal(entry)}
-                          style={{
-                            fontSize: '10px', padding: '4px 8px',
-                            backgroundColor: entry.finalPrice ? '#27ae60' : '#e67e22',
-                            color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer',
-                            fontWeight: '600', minWidth: '70px'
-                          }}
-                        >
-                          {entry.finalPrice ? 'Edit Final' : 'Add Final'}
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>Loading...</div>
+        ) : Object.keys(groupedEntries).length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>No entries pending final report</div>
+        ) : (
+          Object.entries(groupedEntries).map(([dateKey, brokerGroups]) => (
+            <div key={dateKey} style={{ marginBottom: '16px' }}>
+              {Object.entries(brokerGroups).map(([brokerName, brokerEntries]) => (
+                <div key={brokerName}>
+                  {/* Merged Date + Broker Header */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+                    color: 'white', padding: '8px 12px', fontWeight: '700', fontSize: '13px',
+                    letterSpacing: '0.5px', textAlign: 'center'
+                  }}>
+                    {dateKey} — {brokerName} ({brokerEntries.length})
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'auto' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#4a90e2', color: 'white' }}>
+                        <th style={{ ...headerCellStyle, width: '40px' }}>SL</th>
+                        <th style={headerCellStyle}>Bags</th>
+                        <th style={headerCellStyle}>Pkg</th>
+                        <th style={headerCellStyle}>Party Name</th>
+                        <th style={headerCellStyle}>Paddy Location</th>
+                        <th style={headerCellStyle}>Variety</th>
+                        <th style={headerCellStyle}>Offering Details</th>
+                        <th style={headerCellStyle}>Final Price Details</th>
+                        <th style={headerCellStyle}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {brokerEntries.map((entry, index) => {
+                        const o = offeringCache[entry.id];
+                        return (
+                          <tr key={entry.id} style={{ backgroundColor: index % 2 === 0 ? '#f9f9f9' : 'white' }}>
+                            <td style={{ ...dataCellStyle, textAlign: 'center', fontWeight: '600' }}>{index + 1}</td>
+                            <td style={{ ...dataCellStyle, textAlign: 'center', fontWeight: '600' }}>{entry.bags}</td>
+                            <td style={{ ...dataCellStyle, textAlign: 'center' }}>{entry.packaging || '75'}</td>
+                            <td style={dataCellStyle}>{entry.partyName}</td>
+                            <td style={dataCellStyle}>{entry.location}</td>
+                            <td style={dataCellStyle}>{entry.variety}</td>
+                            <td style={{ ...dataCellStyle, fontSize: '10px', maxWidth: '300px', lineHeight: '1.6', whiteSpace: 'normal' }}>
+                              {(entry.offeringPrice || o) ? (
+                                <div>
+                                  <div><strong>₹{o?.offerBaseRateValue || '-'}</strong> {(o?.baseRateType || entry.offerBaseRate || '-').replace(/_/g, '/')} {o?.baseRateUnit === 'per_quintal' ? 'Per Qtl' : o?.baseRateUnit === 'per_ton' ? 'Per Ton' : 'Per Bag'}{o?.customDivisor ? <span style={{ color: '#e67e22' }}> | Div {o.customDivisor}</span> : ''}</div>
+                                  <div>{o?.sute || '-'} Sute {o?.suteUnit === 'per_quintal' ? 'Per Qtl' : o?.suteUnit === 'per_ton' ? 'Per Ton' : 'Per Bag'} | Hamali {o?.hamaliEnabled !== false ? <strong>{o?.hamaliPerKg || o?.hamali || '-'}</strong> : <span style={{ color: '#e74c3c' }}>No</span>}{o?.hamaliEnabled !== false ? ` ${o?.hamaliUnit === 'per_quintal' ? 'Per Qtl' : 'Per Bag'}` : ''}</div>
+                                  <div>Bkrg {o?.brokerageEnabled !== false ? <strong>{o?.brokerage || '-'}</strong> : <span style={{ color: '#e74c3c' }}>No</span>}{o?.brokerageEnabled !== false ? ` ${o?.brokerageUnit === 'per_quintal' ? 'Per Qtl' : 'Per Bag'}` : ''} | LF {o?.lfEnabled !== false ? <strong>{o?.lf || '-'}</strong> : <span style={{ color: '#e74c3c' }}>No</span>}{o?.lfEnabled !== false ? ` ${o?.lfUnit === 'per_quintal' ? 'Per Qtl' : 'Per Bag'}` : ''}{(o?.baseRateType || '').includes('LOOSE') ? <span> | EGB <strong>{o?.egbValue || '0'}</strong> <span style={{ fontSize: '9px', color: o?.egbType === 'purchase' ? '#e65100' : '#2e7d32' }}>({o?.egbType === 'purchase' ? 'Purchase' : 'Mill'})</span></span> : ''}</div>
+                                </div>
+                              ) : '-'}
+                            </td>
+                            <td style={{ ...dataCellStyle, fontSize: '10px', maxWidth: '280px', lineHeight: '1.6' }}>
+                              {(entry.finalPrice || o?.finalPrice) ? (
+                                <div>
+                                  <div><strong>₹{o?.finalPrice || entry.finalPrice}</strong>{o?.finalBaseRate ? ` | Base ${o.finalBaseRate}` : ''}</div>
+                                  <div>{o?.finalSute ? `${o.finalSute} Sute` : '-'} | Hamali {o?.hamaliEnabled ? (o.hamali || o.hamaliPerKg || '-') : <span style={{ color: '#e74c3c' }}>No</span>}</div>
+                                  <div>Bkrg {o?.brokerageEnabled ? (o.brokerage || '-') : <span style={{ color: '#e74c3c' }}>No</span>} | LF {o?.lfEnabled ? (o.lf || '-') : <span style={{ color: '#e74c3c' }}>No</span>}{(o?.baseRateType || '').includes('LOOSE') ? <span> | EGB <strong>{o?.egbValue || '0'}</strong> <span style={{ fontSize: '9px', color: o?.egbType === 'purchase' ? '#e65100' : '#2e7d32' }}>({o?.egbType === 'purchase' ? 'Purchase' : 'Mill'})</span></span> : ''}</div>
+                                </div>
+                              ) : '-'}
+                            </td>
+                            <td style={{ ...dataCellStyle, textAlign: 'center' }}>
+                              <div style={{ display: 'flex', gap: '3px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                {isAdmin && (
+                                  <button onClick={() => handleOpenOfferModal(entry)}
+                                    style={{ fontSize: '10px', padding: '4px 8px', backgroundColor: (entry.offeringPrice || (offeringCache[entry.id] && offeringCache[entry.id].offerBaseRateValue)) ? '#3498db' : '#2196F3', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontWeight: '600', minWidth: '70px' }}>
+                                    {(entry.offeringPrice || (offeringCache[entry.id] && offeringCache[entry.id].offerBaseRateValue)) ? 'Edit Offer' : 'Add Offer'}
+                                  </button>
+                                )}
+                                {(isAdmin || isManager) && (entry.offeringPrice || o) && (
+                                  <button onClick={() => handleOpenFinalModal(entry)}
+                                    style={{ fontSize: '10px', padding: '4px 8px', backgroundColor: entry.finalPrice ? '#27ae60' : '#e67e22', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontWeight: '600', minWidth: '70px' }}>
+                                    {entry.finalPrice ? 'Edit Final' : 'Add Final'}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          ))
+        )}
+      </div >
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div style={{
-          display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-          padding: '12px', fontSize: '12px'
-        }}>
-          <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1}
-            style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: '3px', cursor: currentPage === 1 ? 'default' : 'pointer', backgroundColor: currentPage === 1 ? '#f0f0f0' : 'white', fontSize: '11px' }}>
-            First
-          </button>
-          <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
-            style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: '3px', cursor: currentPage === 1 ? 'default' : 'pointer', backgroundColor: currentPage === 1 ? '#f0f0f0' : 'white', fontSize: '11px' }}>
-            ‹ Prev
-          </button>
-          <span style={{ fontWeight: '500', color: '#555' }}>Page {currentPage} of {totalPages}</span>
-          <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-            style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: '3px', cursor: currentPage === totalPages ? 'default' : 'pointer', backgroundColor: currentPage === totalPages ? '#f0f0f0' : 'white', fontSize: '11px' }}>
-            Next ›
-          </button>
-          <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}
-            style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: '3px', cursor: currentPage === totalPages ? 'default' : 'pointer', backgroundColor: currentPage === totalPages ? '#f0f0f0' : 'white', fontSize: '11px' }}>
-            Last
-          </button>
-          <span style={{ color: '#888', marginLeft: '8px' }}>({totalEntries} total)</span>
-        </div>
-      )}
+      {
+        totalPages > 1 && (
+          <div style={{
+            display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
+            padding: '12px', fontSize: '12px'
+          }}>
+            <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1}
+              style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: '3px', cursor: currentPage === 1 ? 'default' : 'pointer', backgroundColor: currentPage === 1 ? '#f0f0f0' : 'white', fontSize: '11px' }}>
+              First
+            </button>
+            <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
+              style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: '3px', cursor: currentPage === 1 ? 'default' : 'pointer', backgroundColor: currentPage === 1 ? '#f0f0f0' : 'white', fontSize: '11px' }}>
+              ‹ Prev
+            </button>
+            <span style={{ fontWeight: '500', color: '#555' }}>Page {currentPage} of {totalPages}</span>
+            <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
+              style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: '3px', cursor: currentPage === totalPages ? 'default' : 'pointer', backgroundColor: currentPage === totalPages ? '#f0f0f0' : 'white', fontSize: '11px' }}>
+              Next ›
+            </button>
+            <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}
+              style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: '3px', cursor: currentPage === totalPages ? 'default' : 'pointer', backgroundColor: currentPage === totalPages ? '#f0f0f0' : 'white', fontSize: '11px' }}>
+              Last
+            </button>
+            <span style={{ color: '#888', marginLeft: '8px' }}>({totalEntries} total)</span>
+          </div>
+        )
+      }
 
       {/* ==================== OFFERING PRICE MODAL ==================== */}
-      {showOfferModal && selectedEntry && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.6)',
-          display: 'flex', justifyContent: 'center', alignItems: 'center',
-          zIndex: 1000, padding: '20px'
-        }}>
+      {
+        showOfferModal && selectedEntry && (
           <div style={{
-            backgroundColor: 'white', padding: '24px', borderRadius: '12px',
-            width: '100%', maxWidth: '800px', maxHeight: '90vh',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
-            overflowY: 'auto'
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            display: 'flex', justifyContent: 'center', alignItems: 'center',
+            zIndex: 1000, padding: '20px'
           }}>
-            <h3 style={{
-              marginTop: 0, marginBottom: '14px', fontSize: '18px', fontWeight: '700',
-              color: '#2c3e50', borderBottom: '3px solid #3498db', paddingBottom: '10px',
-              textAlign: 'center'
-            }}>
-              👤 {selectedEntry.brokerName}
-            </h3>
-
-            {/* Entry Info — one line */}
             <div style={{
-              backgroundColor: '#eaf2f8', padding: '8px 12px', borderRadius: '6px',
-              marginBottom: '14px', fontSize: '12px', textAlign: 'center'
+              backgroundColor: 'white', padding: '24px', borderRadius: '12px',
+              width: '100%', maxWidth: '800px', maxHeight: '90vh',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+              overflowY: 'auto'
             }}>
-              <b>{selectedEntry.bags}</b> Bags | <b>{selectedEntry.packaging || '75'}</b> Kg | <b>{selectedEntry.partyName}</b> | <b>{selectedEntry.location}</b> | <b>{selectedEntry.variety}</b>
-            </div>
-
-            <form onSubmit={handleSubmitOffer}>
-
-
-              {/* Row 2: Sute value + Per Kg / Per Ton radios (same row) */}
-              <div style={fieldGroupStyle}>
-                <label style={labelStyle}>Sute</label>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                  <input type="number" step="0.01" value={offerData.sute}
-                    onChange={e => setOfferData({ ...offerData, sute: e.target.value })}
-                    style={{ ...inputStyle, flex: '1' }} placeholder="Sute value" />
-                  <label style={radioLabelStyle}>
-                    <input type="radio" name="suteUnit"
-                      checked={offerData.suteUnit === 'per_kg'}
-                      onChange={() => setOfferData({ ...offerData, suteUnit: 'per_kg' })} /> Per Kg
-                  </label>
-                  <label style={radioLabelStyle}>
-                    <input type="radio" name="suteUnit"
-                      checked={offerData.suteUnit === 'per_ton'}
-                      onChange={() => setOfferData({ ...offerData, suteUnit: 'per_ton' })} /> Per Ton
-                  </label>
-                </div>
-              </div>
-
-              {/* Row 3: Offer Base Rate — type select + value + MASTER per bag/quintal toggle */}
-              <div style={fieldGroupStyle}>
-                <label style={labelStyle}>Offer Rate *</label>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <select value={offerData.baseRateType}
-                    onChange={e => setOfferData({ ...offerData, baseRateType: e.target.value })}
-                    style={{ ...inputStyle, flex: '0 0 130px', cursor: 'pointer' }} required>
-                    <option value="PD_LOOSE">PD/Loose</option>
-                    <option value="PD_WB">PD/WB</option>
-                    <option value="MD_WB">MD/WB</option>
-                    <option value="MD_LOOSE">MD/Loose</option>
-                  </select>
-                  <input type="number" step="0.01" value={offerData.offerBaseRateValue}
-                    onChange={e => setOfferData({ ...offerData, offerBaseRateValue: e.target.value })}
-                    style={{ ...inputStyle, flex: '1' }} placeholder="Rate value" />
-                  <label style={radioLabelStyle}>
-                    <input type="radio" name="baseRateUnit"
-                      checked={offerData.baseRateUnit === 'per_bag'}
-                      onChange={() => setOfferData({ ...offerData, baseRateUnit: 'per_bag', hamaliUnit: 'per_bag', brokerageUnit: 'per_bag', lfUnit: 'per_bag' })} /> Per Bag (All)
-                  </label>
-                  <label style={radioLabelStyle}>
-                    <input type="radio" name="baseRateUnit"
-                      checked={offerData.baseRateUnit === 'per_quintal'}
-                      onChange={() => setOfferData({ ...offerData, baseRateUnit: 'per_quintal', hamaliUnit: 'per_quintal', brokerageUnit: 'per_quintal', lfUnit: 'per_quintal' })} /> Per Qtl (All)
-                  </label>
-                </div>
-              </div>
-
-              {/* Row 3b: Custom Divisor — directly below base rate, only for MD/Loose */}
-              {isCustomDivisorVisible && (
-                <div style={fieldGroupStyle}>
-                  <label style={labelStyle}>Custom Divisor (MD/Loose)</label>
-                  <input type="number" step="0.01" value={offerData.customDivisor}
-                    onChange={e => setOfferData({ ...offerData, customDivisor: e.target.value })}
-                    style={inputStyle} placeholder="Custom divisor number" />
-                </div>
-              )}
-
-              {/* Row 4: Hamali — value input + Per Bag/Per Quintal radios */}
-              <div style={fieldGroupStyle}>
-                <label style={labelStyle}>Hamali</label>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <input type="number" step="0.01" value={offerData.hamaliPerKg}
-                    onChange={e => setOfferData({ ...offerData, hamaliPerKg: e.target.value, hamaliEnabled: true })}
-                    style={{ ...inputStyle, flex: '1', minWidth: '80px' }} placeholder="Hamali value" />
-                  <label style={radioLabelStyle}>
-                    <input type="radio" name="hamaliUnit" checked={offerData.hamaliUnit === 'per_bag'} onChange={() => setOfferData({ ...offerData, hamaliUnit: 'per_bag' })} /> Per Bag
-                  </label>
-                  <label style={radioLabelStyle}>
-                    <input type="radio" name="hamaliUnit" checked={offerData.hamaliUnit === 'per_quintal'} onChange={() => setOfferData({ ...offerData, hamaliUnit: 'per_quintal' })} /> Per Qtl
-                  </label>
-                </div>
-              </div>
-
-              {/* Row 5: Moisture */}
-              <div style={fieldGroupStyle}>
-                <label style={labelStyle}>Moisture (%)</label>
-                <input type="number" step="0.01" value={offerData.moistureValue}
-                  onChange={e => setOfferData({ ...offerData, moistureValue: e.target.value })}
-                  style={inputStyle} placeholder="Moisture percentage" />
-              </div>
-
-              {/* Row 6: Brokerage — value input + Per Bag/Per Quintal radios */}
-              <div style={fieldGroupStyle}>
-                <label style={labelStyle}>Brokerage</label>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <input type="number" step="0.01" value={offerData.brokerageValue}
-                    onChange={e => setOfferData({ ...offerData, brokerageValue: e.target.value, brokerageEnabled: true })}
-                    style={{ ...inputStyle, flex: '1', minWidth: '80px' }} placeholder="Brokerage value" />
-                  <label style={radioLabelStyle}>
-                    <input type="radio" name="brokerageUnit" checked={offerData.brokerageUnit === 'per_bag'} onChange={() => setOfferData({ ...offerData, brokerageUnit: 'per_bag' })} /> Per Bag
-                  </label>
-                  <label style={radioLabelStyle}>
-                    <input type="radio" name="brokerageUnit" checked={offerData.brokerageUnit === 'per_quintal'} onChange={() => setOfferData({ ...offerData, brokerageUnit: 'per_quintal' })} /> Per Qtl
-                  </label>
-                </div>
-              </div>
-
-              {/* Row 7: LF — value input + Per Bag/Per Quintal radios */}
-              <div style={fieldGroupStyle}>
-                <label style={labelStyle}>LF</label>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <input type="number" step="0.01" value={offerData.lfValue}
-                    onChange={e => setOfferData({ ...offerData, lfValue: e.target.value, lfEnabled: true })}
-                    style={{ ...inputStyle, flex: '1', minWidth: '80px' }} placeholder="LF value" />
-                  <label style={radioLabelStyle}>
-                    <input type="radio" name="lfUnit" checked={offerData.lfUnit === 'per_bag'} onChange={() => setOfferData({ ...offerData, lfUnit: 'per_bag' })} /> Per Bag
-                  </label>
-                  <label style={radioLabelStyle}>
-                    <input type="radio" name="lfUnit" checked={offerData.lfUnit === 'per_quintal'} onChange={() => setOfferData({ ...offerData, lfUnit: 'per_quintal' })} /> Per Qtl
-                  </label>
-                </div>
-              </div>
-
-              {/* EGB — only for PD/Loose and MD/Loose (hidden for WB types) */}
-              {isEgbVisible && (
-                <div style={fieldGroupStyle}>
-                  <label style={labelStyle}>EGB</label>
-                  <input type="number" step="0.01" value={offerData.egbValue}
-                    onChange={e => setOfferData({ ...offerData, egbValue: e.target.value })}
-                    style={inputStyle} placeholder="EGB value" />
-                </div>
-              )}
-
-              {/* Save Summary */}
-              <div style={{
-                backgroundColor: '#e8f5e9', padding: '10px 12px', borderRadius: '6px',
-                marginBottom: '12px', fontSize: '12px', border: '1px solid #c8e6c9'
+              <h3 style={{
+                marginTop: 0, marginBottom: '14px', fontSize: '18px', fontWeight: '700',
+                color: '#2c3e50', borderBottom: '3px solid #3498db', paddingBottom: '10px',
+                textAlign: 'center'
               }}>
-                <strong style={{ color: '#2e7d32' }}>Summary:</strong>
-                <span style={{ marginLeft: '6px', color: '#555' }}>{buildOfferSummary()}</span>
+                {selectedEntry.brokerName}
+              </h3>
+
+              {/* Entry Info - one line */}
+              <div style={{
+                backgroundColor: '#eaf2f8', padding: '8px 12px', borderRadius: '6px',
+                marginBottom: '14px', fontSize: '12px', textAlign: 'center'
+              }}>
+                Bags: <b>{selectedEntry.bags}</b> | Pkg: <b>{selectedEntry.packaging || '75'} Kg</b> | Party: <b>{selectedEntry.partyName}</b> | <b>{selectedEntry.location}</b> | <b>{selectedEntry.variety}</b>
               </div>
 
-              {/* Remarks */}
-              <div style={fieldGroupStyle}>
-                <label style={labelStyle}>Remarks</label>
-                <textarea value={offerData.remarks}
-                  onChange={e => setOfferData({ ...offerData, remarks: e.target.value })}
-                  style={{ ...inputStyle, minHeight: '50px' }} placeholder="Enter remarks..." />
-              </div>
+              <form onSubmit={handleSubmitOffer}>
+                {/* Row 1: Offer Rate + Sute + Moisture */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                  <div>
+                    <label style={labelStyle}>Offer Rate *</label>
+                    <div style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
+                      <select value={offerData.baseRateType}
+                        onChange={e => setOfferData({ ...offerData, baseRateType: e.target.value })}
+                        style={{ ...inputStyle, flex: '0 0 100px', cursor: 'pointer', fontSize: '11px' }} required>
+                        <option value="PD_LOOSE">PD/Loose</option>
+                        <option value="PD_WB">PD/WB</option>
+                        <option value="MD_WB">MD/WB</option>
+                        <option value="MD_LOOSE">MD/Loose</option>
+                      </select>
+                      <input type="number" step="0.01" value={offerData.offerBaseRateValue}
+                        onChange={e => setOfferData({ ...offerData, offerBaseRateValue: e.target.value })}
+                        style={{ ...inputStyle, flex: '1' }} placeholder="Rate" />
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', fontSize: '11px' }}>
+                      <label style={radioLabelStyle}>
+                        <input type="radio" name="baseRateUnit" checked={offerData.baseRateUnit === 'per_bag'}
+                          onChange={() => setOfferData({ ...offerData, baseRateUnit: 'per_bag', hamaliUnit: 'per_bag', brokerageUnit: 'per_bag', lfUnit: 'per_bag' })} /> Per Bag
+                      </label>
+                      <label style={radioLabelStyle}>
+                        <input type="radio" name="baseRateUnit" checked={offerData.baseRateUnit === 'per_quintal'}
+                          onChange={() => setOfferData({ ...offerData, baseRateUnit: 'per_quintal', hamaliUnit: 'per_quintal', brokerageUnit: 'per_quintal', lfUnit: 'per_quintal' })} /> Per Qtl
+                      </label>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Sute</label>
+                    <input type="number" step="0.01" value={offerData.sute}
+                      onChange={e => setOfferData({ ...offerData, sute: e.target.value })}
+                      style={inputStyle} placeholder="Sute value" />
+                    <div style={{ display: 'flex', gap: '6px', fontSize: '11px', marginTop: '4px' }}>
+                      <label style={radioLabelStyle}>
+                        <input type="radio" name="suteUnit" checked={offerData.suteUnit === 'per_bag'}
+                          onChange={() => setOfferData({ ...offerData, suteUnit: 'per_bag' })} /> Per Bag
+                      </label>
+                      <label style={radioLabelStyle}>
+                        <input type="radio" name="suteUnit" checked={offerData.suteUnit === 'per_ton'}
+                          onChange={() => setOfferData({ ...offerData, suteUnit: 'per_ton' })} /> Per Ton
+                      </label>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Moisture (%)</label>
+                    <input type="number" step="0.01" value={offerData.moistureValue}
+                      onChange={e => setOfferData({ ...offerData, moistureValue: e.target.value })}
+                      style={inputStyle} placeholder="Moisture %" />
+                  </div>
+                </div>
 
-              {/* Actions */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid #eee', paddingTop: '12px' }}>
-                <button type="button" onClick={() => setShowOfferModal(false)} disabled={isSubmitting}
-                  style={{ padding: '8px 16px', cursor: isSubmitting ? 'not-allowed' : 'pointer', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: 'white', fontSize: '13px', color: '#666' }}>
-                  Cancel
-                </button>
-                <button type="submit" disabled={isSubmitting}
-                  style={{ padding: '8px 20px', cursor: isSubmitting ? 'not-allowed' : 'pointer', backgroundColor: isSubmitting ? '#95a5a6' : '#3498db', color: 'white', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: '600' }}>
-                  {isSubmitting ? 'Saving...' : '💾 Save Offering Price'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div >
-      )}
+                {/* Row 2: Hamali + Brokerage + LF with Yes/No */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                  <div>
+                    <label style={labelStyle}>Hamali</label>
+                    <div style={{ display: 'flex', gap: '6px', marginBottom: '4px', fontSize: '11px' }}>
+                      <label style={radioLabelStyle}><input type="radio" name="offerHamaliEnabled" checked={offerData.hamaliEnabled}
+                        onChange={() => setOfferData({ ...offerData, hamaliEnabled: true })} /> <span style={{ color: '#27ae60', fontWeight: '600' }}>Yes</span></label>
+                      <label style={radioLabelStyle}><input type="radio" name="offerHamaliEnabled" checked={!offerData.hamaliEnabled}
+                        onChange={() => setOfferData({ ...offerData, hamaliEnabled: false, hamaliPerKg: '' })} /> <span style={{ color: '#e74c3c', fontWeight: '600' }}>No</span></label>
+                    </div>
+                    {offerData.hamaliEnabled && (
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <input type="number" step="0.01" value={offerData.hamaliPerKg}
+                          onChange={e => setOfferData({ ...offerData, hamaliPerKg: e.target.value })}
+                          style={{ ...inputStyle, flex: 1 }} placeholder="Amount" />
+                        <select value={offerData.hamaliUnit} onChange={e => setOfferData({ ...offerData, hamaliUnit: e.target.value })}
+                          style={{ ...inputStyle, width: '85px', fontSize: '11px' }}>
+                          <option value="per_bag">Per Bag</option>
+                          <option value="per_quintal">Per Qtl</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Brokerage</label>
+                    <div style={{ display: 'flex', gap: '6px', marginBottom: '4px', fontSize: '11px' }}>
+                      <label style={radioLabelStyle}><input type="radio" name="offerBrokerageEnabled" checked={offerData.brokerageEnabled}
+                        onChange={() => setOfferData({ ...offerData, brokerageEnabled: true })} /> <span style={{ color: '#27ae60', fontWeight: '600' }}>Yes</span></label>
+                      <label style={radioLabelStyle}><input type="radio" name="offerBrokerageEnabled" checked={!offerData.brokerageEnabled}
+                        onChange={() => setOfferData({ ...offerData, brokerageEnabled: false, brokerageValue: '' })} /> <span style={{ color: '#e74c3c', fontWeight: '600' }}>No</span></label>
+                    </div>
+                    {offerData.brokerageEnabled && (
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <input type="number" step="0.01" value={offerData.brokerageValue}
+                          onChange={e => setOfferData({ ...offerData, brokerageValue: e.target.value })}
+                          style={{ ...inputStyle, flex: 1 }} placeholder="Amount" />
+                        <select value={offerData.brokerageUnit} onChange={e => setOfferData({ ...offerData, brokerageUnit: e.target.value })}
+                          style={{ ...inputStyle, width: '85px', fontSize: '11px' }}>
+                          <option value="per_bag">Per Bag</option>
+                          <option value="per_quintal">Per Qtl</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={labelStyle}>LF</label>
+                    <div style={{ display: 'flex', gap: '6px', marginBottom: '4px', fontSize: '11px' }}>
+                      <label style={radioLabelStyle}><input type="radio" name="offerLfEnabled" checked={offerData.lfEnabled}
+                        onChange={() => setOfferData({ ...offerData, lfEnabled: true })} /> <span style={{ color: '#27ae60', fontWeight: '600' }}>Yes</span></label>
+                      <label style={radioLabelStyle}><input type="radio" name="offerLfEnabled" checked={!offerData.lfEnabled}
+                        onChange={() => setOfferData({ ...offerData, lfEnabled: false, lfValue: '' })} /> <span style={{ color: '#e74c3c', fontWeight: '600' }}>No</span></label>
+                    </div>
+                    {offerData.lfEnabled && (
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <input type="number" step="0.01" value={offerData.lfValue}
+                          onChange={e => setOfferData({ ...offerData, lfValue: e.target.value })}
+                          style={{ ...inputStyle, flex: 1 }} placeholder="Amount" />
+                        <select value={offerData.lfUnit} onChange={e => setOfferData({ ...offerData, lfUnit: e.target.value })}
+                          style={{ ...inputStyle, width: '85px', fontSize: '11px' }}>
+                          <option value="per_bag">Per Bag</option>
+                          <option value="per_quintal">Per Qtl</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Row 3: EGB + Custom Divisor (conditional) */}
+                {(isEgbVisible || isCustomDivisorVisible) && (
+                  <div style={{ display: 'grid', gridTemplateColumns: isCustomDivisorVisible ? '1fr 1fr' : '1fr', gap: '10px', marginBottom: '12px' }}>
+                    {isEgbVisible && (<div><label style={labelStyle}>EGB</label>
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '11px' }}>
+                        <label style={{ ...radioLabelStyle, padding: '4px 10px', borderRadius: '4px', border: offerData.egbType === 'mill' ? '2px solid #27ae60' : '1px solid #ddd', backgroundColor: offerData.egbType === 'mill' ? '#e8f5e9' : 'transparent' }}>
+                          <input type="radio" name="offerEgbType" checked={offerData.egbType === 'mill'}
+                            onChange={() => setOfferData({ ...offerData, egbType: 'mill', egbValue: '0' })} />
+                          <span style={{ fontWeight: '600', color: '#2e7d32' }}>Mill</span>
+                        </label>
+                        <label style={{ ...radioLabelStyle, padding: '4px 10px', borderRadius: '4px', border: offerData.egbType === 'purchase' ? '2px solid #e67e22' : '1px solid #ddd', backgroundColor: offerData.egbType === 'purchase' ? '#fff3e0' : 'transparent' }}>
+                          <input type="radio" name="offerEgbType" checked={offerData.egbType === 'purchase'}
+                            onChange={() => setOfferData({ ...offerData, egbType: 'purchase', egbValue: '' })} />
+                          <span style={{ fontWeight: '600', color: '#e67e22' }}>Purchase</span>
+                        </label>
+                      </div>
+                      <input type="number" step="0.01" value={offerData.egbType === 'mill' ? '0' : offerData.egbValue}
+                        onChange={e => setOfferData({ ...offerData, egbValue: e.target.value })}
+                        disabled={offerData.egbType === 'mill'}
+                        style={{ ...inputStyle, backgroundColor: offerData.egbType === 'mill' ? '#f0f0f0' : '#fff', cursor: offerData.egbType === 'mill' ? 'not-allowed' : 'text' }} placeholder={offerData.egbType === 'mill' ? '0 (Mill - Own Bags)' : 'EGB value'} /></div>)}
+                    {isCustomDivisorVisible && (<div><label style={labelStyle}>Custom Divisor</label>
+                      <input type="number" step="0.01" value={offerData.customDivisor}
+                        onChange={e => setOfferData({ ...offerData, customDivisor: e.target.value })}
+                        style={inputStyle} placeholder="Divisor" /></div>)}
+                  </div>
+                )}
+
+                {/* Summary */}
+                <div style={{ backgroundColor: '#e8f5e9', padding: '8px 12px', borderRadius: '6px', marginBottom: '10px', fontSize: '11px', border: '1px solid #c8e6c9' }}>
+                  <strong style={{ color: '#2e7d32' }}>Summary:</strong>
+                  <span style={{ marginLeft: '6px', color: '#555' }}>{buildOfferSummary()}</span>
+                </div>
+
+                {/* Remarks */}
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={labelStyle}>Remarks</label>
+                  <textarea value={offerData.remarks} onChange={e => setOfferData({ ...offerData, remarks: e.target.value })}
+                    style={{ ...inputStyle, minHeight: '40px' }} placeholder="Enter remarks..." />
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid #eee', paddingTop: '10px' }}>
+                  <button type="button" onClick={() => setShowOfferModal(false)} disabled={isSubmitting}
+                    style={{ padding: '8px 16px', cursor: isSubmitting ? 'not-allowed' : 'pointer', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: 'white', fontSize: '13px', color: '#666' }}>Cancel</button>
+                  <button type="submit" disabled={isSubmitting}
+                    style={{ padding: '8px 20px', cursor: isSubmitting ? 'not-allowed' : 'pointer', backgroundColor: isSubmitting ? '#95a5a6' : '#3498db', color: 'white', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: '600' }}>
+                    {isSubmitting ? 'Saving...' : 'Save Offering Price'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div >
+        )
+      }
 
       {/* ==================== FINAL PRICE MODAL ==================== */}
-      {showFinalPriceModal && selectedEntry && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.6)',
-          display: 'flex', justifyContent: 'center', alignItems: 'center',
-          zIndex: 1000, padding: '20px'
-        }}>
+      {
+        showFinalPriceModal && selectedEntry && (
           <div style={{
-            backgroundColor: 'white', padding: '24px', borderRadius: '12px',
-            width: '100%', maxWidth: '800px', maxHeight: '90vh',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
-            overflowY: 'auto'
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.6)',
+            display: 'flex', justifyContent: 'center', alignItems: 'center',
+            zIndex: 1000, padding: '20px'
           }}>
-            <h3 style={{
-              marginTop: 0, marginBottom: '14px', fontSize: '18px', fontWeight: '700',
-              color: '#2c3e50', borderBottom: '3px solid #27ae60', paddingBottom: '10px',
-              textAlign: 'center'
-            }}>
-              👤 {selectedEntry.brokerName}
-            </h3>
-
-            {/* Entry Info — one line */}
             <div style={{
-              backgroundColor: '#e8f8f5', padding: '8px 12px', borderRadius: '6px',
-              marginBottom: '14px', fontSize: '12px', textAlign: 'center'
+              backgroundColor: 'white', padding: '24px', borderRadius: '12px',
+              width: '100%', maxWidth: '900px', maxHeight: '90vh',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+              overflowY: 'auto'
             }}>
-              <b>{selectedEntry.bags}</b> Bags | <b>{selectedEntry.packaging || '75'}</b> Kg | <b>{selectedEntry.partyName}</b> | <b>{selectedEntry.location}</b> | <b>{selectedEntry.variety}</b>
-            </div>
-
-            <form onSubmit={handleSubmitFinal}>
-              {/* Auto-fetched from offering */}
-              <div style={{
-                ...fieldGroupStyle, backgroundColor: '#f0f4f8', padding: '12px',
-                borderRadius: '6px', border: '1px solid #d0d8e0'
+              <h3 style={{
+                marginTop: 0, marginBottom: '14px', fontSize: '18px', fontWeight: '700',
+                color: '#2c3e50', borderBottom: '3px solid #27ae60', paddingBottom: '10px',
+                textAlign: 'center'
               }}>
-                <label style={{ ...labelStyle, fontWeight: '600', color: '#333', marginBottom: '8px' }}>
-                  Offer Values
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                {selectedEntry.brokerName}
+              </h3>
+
+              {/* Entry Info - one line */}
+              <div style={{
+                backgroundColor: '#e8f8f5', padding: '8px 12px', borderRadius: '6px',
+                marginBottom: '14px', fontSize: '12px', textAlign: 'center'
+              }}>
+                Bags: <b>{selectedEntry.bags}</b> | Pkg: <b>{selectedEntry.packaging || '75'} Kg</b> | Party: <b>{selectedEntry.partyName}</b> | <b>{selectedEntry.location}</b> | <b>{selectedEntry.variety}</b>
+              </div>
+
+              <form onSubmit={handleSubmitFinal}>
+                {/* Row 1: Final Rate + Sute + Moisture */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
                   <div>
-                    <label style={labelStyle}>Sute (auto) {!finalData.suteEnabled && <span style={{ color: '#e74c3c', fontSize: '10px' }}>(Admin: No)</span>}</label>
+                    <label style={labelStyle}>Final Rate</label>
+                    <div style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
+                      <select value={finalData.baseRateType}
+                        onChange={e => setFinalData({ ...finalData, baseRateType: e.target.value })}
+                        style={{ ...inputStyle, flex: '0 0 100px', cursor: 'pointer', fontSize: '11px' }}>
+                        <option value="PD_LOOSE">PD/Loose</option>
+                        <option value="PD_WB">PD/WB</option>
+                        <option value="MD_WB">MD/WB</option>
+                        <option value="MD_LOOSE">MD/Loose</option>
+                      </select>
+                      <input type="number" step="0.01" value={finalData.finalBaseRate}
+                        onChange={e => setFinalData({ ...finalData, finalBaseRate: e.target.value })}
+                        style={{ ...inputStyle, flex: '1' }} placeholder="Rate" />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Sute</label>
                     <input type="number" step="0.01" value={finalData.finalSute}
                       onChange={e => setFinalData({ ...finalData, finalSute: e.target.value })}
                       style={{ ...inputStyle, backgroundColor: '#f9f9f9', opacity: finalData.suteEnabled ? 1 : 0.6 }}
-                      readOnly={!finalData.suteEnabled && !isManager} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Sute Unit</label>
-                    <div style={radioGroupStyle}>
+                      readOnly={!finalData.suteEnabled && !isManager} placeholder="Sute" />
+                    <div style={{ display: 'flex', gap: '6px', fontSize: '11px', marginTop: '4px' }}>
                       <label style={radioLabelStyle}>
-                        <input type="radio" name="finalSuteUnit"
-                          checked={finalData.finalSuteUnit === 'per_kg'}
-                          onChange={() => setFinalData({ ...finalData, finalSuteUnit: 'per_kg' })} /> Per Kg
+                        <input type="radio" name="finalSuteUnit" checked={finalData.finalSuteUnit === 'per_bag'}
+                          onChange={() => setFinalData({ ...finalData, finalSuteUnit: 'per_bag' })} /> Per Bag
                       </label>
                       <label style={radioLabelStyle}>
-                        <input type="radio" name="finalSuteUnit"
-                          checked={finalData.finalSuteUnit === 'per_ton'}
+                        <input type="radio" name="finalSuteUnit" checked={finalData.finalSuteUnit === 'per_ton'}
                           onChange={() => setFinalData({ ...finalData, finalSuteUnit: 'per_ton' })} /> Per Ton
                       </label>
                     </div>
                   </div>
-                </div>
-                <div style={{ marginTop: '8px' }}>
-                  <label style={labelStyle}>Final Base Rate (auto)</label>
-                  <input type="number" step="0.01" value={finalData.finalBaseRate}
-                    onChange={e => setFinalData({ ...finalData, finalBaseRate: e.target.value })}
-                    style={{ ...inputStyle, backgroundColor: '#f9f9f9' }} />
-                </div>
-              </div>
-
-              {/* Admin Toggles */}
-              {isAdmin && (
-                <div style={{
-                  ...fieldGroupStyle, backgroundColor: '#fff3e0', padding: '12px',
-                  borderRadius: '6px', border: '1px solid #ffe0b2'
-                }}>
-                  <label style={{ ...labelStyle, fontWeight: '600', color: '#333', marginBottom: '10px' }}>
-                    👉 Manager Should Fill? (Select "No" for Manager to fill these fields)
-                  </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: '10px' }}>
-                    {/* Sute Toggle */}
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>Sute</div>
-                      <div style={radioGroupStyle}>
-                        <label style={radioLabelStyle}>
-                          <input type="radio" name="finalSuteEnabled"
-                            checked={finalData.suteEnabled}
-                            onChange={() => setFinalData({ ...finalData, suteEnabled: true })} />
-                          <span style={{ color: '#27ae60', fontWeight: '600' }}>Yes</span>
-                        </label>
-                        <label style={radioLabelStyle}>
-                          <input type="radio" name="finalSuteEnabled"
-                            checked={!finalData.suteEnabled}
-                            onChange={() => setFinalData({ ...finalData, suteEnabled: false })} />
-                          <span style={{ color: '#e74c3c', fontWeight: '600' }}>No</span>
-                        </label>
-                      </div>
-                    </div>
-                    {/* Moisture Toggle */}
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>Moisture</div>
-                      <div style={radioGroupStyle}>
-                        <label style={radioLabelStyle}>
-                          <input type="radio" name="finalMoistureEnabled"
-                            checked={finalData.moistureEnabled}
-                            onChange={() => setFinalData({ ...finalData, moistureEnabled: true })} />
-                          <span style={{ color: '#27ae60', fontWeight: '600' }}>Yes</span>
-                        </label>
-                        <label style={radioLabelStyle}>
-                          <input type="radio" name="finalMoistureEnabled"
-                            checked={!finalData.moistureEnabled}
-                            onChange={() => setFinalData({ ...finalData, moistureEnabled: false })} />
-                          <span style={{ color: '#e74c3c', fontWeight: '600' }}>No</span>
-                        </label>
-                      </div>
-                    </div>
-                    {/* Hamali Toggle */}
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>Hamali</div>
-                      <div style={radioGroupStyle}>
-                        <label style={radioLabelStyle}>
-                          <input type="radio" name="finalHamaliEnabled"
-                            checked={finalData.hamaliEnabled}
-                            onChange={() => setFinalData({ ...finalData, hamaliEnabled: true })} />
-                          <span style={{ color: '#27ae60', fontWeight: '600' }}>Yes</span>
-                        </label>
-                        <label style={radioLabelStyle}>
-                          <input type="radio" name="finalHamaliEnabled"
-                            checked={!finalData.hamaliEnabled}
-                            onChange={() => setFinalData({ ...finalData, hamaliEnabled: false })} />
-                          <span style={{ color: '#e74c3c', fontWeight: '600' }}>No</span>
-                        </label>
-                      </div>
-                    </div>
-                    {/* Brokerage Toggle */}
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>Brokerage</div>
-                      <div style={radioGroupStyle}>
-                        <label style={radioLabelStyle}>
-                          <input type="radio" name="finalBrokerageEnabled"
-                            checked={finalData.brokerageEnabled}
-                            onChange={() => setFinalData({ ...finalData, brokerageEnabled: true })} />
-                          <span style={{ color: '#27ae60', fontWeight: '600' }}>Yes</span>
-                        </label>
-                        <label style={radioLabelStyle}>
-                          <input type="radio" name="finalBrokerageEnabled"
-                            checked={!finalData.brokerageEnabled}
-                            onChange={() => setFinalData({ ...finalData, brokerageEnabled: false })} />
-                          <span style={{ color: '#e74c3c', fontWeight: '600' }}>No</span>
-                        </label>
-                      </div>
-                    </div>
-                    {/* LF Toggle */}
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '12px', fontWeight: '600', marginBottom: '6px' }}>LF</div>
-                      <div style={radioGroupStyle}>
-                        <label style={radioLabelStyle}>
-                          <input type="radio" name="finalLfEnabled"
-                            checked={finalData.lfEnabled}
-                            onChange={() => setFinalData({ ...finalData, lfEnabled: true })} />
-                          <span style={{ color: '#27ae60', fontWeight: '600' }}>Yes</span>
-                        </label>
-                        <label style={radioLabelStyle}>
-                          <input type="radio" name="finalLfEnabled"
-                            checked={!finalData.lfEnabled}
-                            onChange={() => setFinalData({ ...finalData, lfEnabled: false })} />
-                          <span style={{ color: '#e74c3c', fontWeight: '600' }}>No</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Value Fields — Manager sees ALL fields, Admin sees only enabled fields */}
-              <div style={{
-                ...fieldGroupStyle, backgroundColor: '#f3e5f5', padding: '12px',
-                borderRadius: '6px', border: '1px solid #e1bee7'
-              }}>
-                <label style={{ ...labelStyle, fontWeight: '600', color: '#333', marginBottom: '10px' }}>
-                  {isAdmin ? 'Value Fields (Editable by Admin)' : 'Manager Entry — Fill Remaining Values'}
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-
-                  {/* Moisture */}
                   <div>
-                    <label style={labelStyle}>Moisture (%) {!finalData.moistureEnabled && <span style={{ color: '#e74c3c', fontSize: '10px' }}>(Admin: No)</span>}</label>
+                    <label style={labelStyle}>Moisture (%)</label>
                     <input type="number" step="0.01" value={finalData.moistureValue}
                       onChange={e => setFinalData({ ...finalData, moistureValue: e.target.value, moistureEnabled: true })}
                       style={inputStyle} placeholder="Moisture %" />
                   </div>
-
-                  {/* Hamali */}
-                  <div>
-                    <label style={labelStyle}>Hamali {!finalData.hamaliEnabled && <span style={{ color: '#e74c3c', fontSize: '10px' }}>(Admin: No)</span>}</label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <input type="number" step="0.01" value={finalData.hamali}
-                        onChange={e => setFinalData({ ...finalData, hamali: e.target.value, hamaliEnabled: true })}
-                        style={{ ...inputStyle, flex: 1 }} placeholder="Amount" />
-                      <select value={finalData.hamaliUnit}
-                        onChange={e => setFinalData({ ...finalData, hamaliUnit: e.target.value, hamaliEnabled: true })}
-                        style={{ ...inputStyle, width: '100px' }}>
-                        <option value="per_bag">Per Bag</option>
-                        <option value="per_quintal">Per Qtl</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Brokerage */}
-                  <div>
-                    <label style={labelStyle}>Brokerage {!finalData.brokerageEnabled && <span style={{ color: '#e74c3c', fontSize: '10px' }}>(Admin: No)</span>}</label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <input type="number" step="0.01" value={finalData.brokerage}
-                        onChange={e => setFinalData({ ...finalData, brokerage: e.target.value, brokerageEnabled: true })}
-                        style={{ ...inputStyle, flex: 1 }} placeholder="Amount" />
-                      <select value={finalData.brokerageUnit}
-                        onChange={e => setFinalData({ ...finalData, brokerageUnit: e.target.value, brokerageEnabled: true })}
-                        style={{ ...inputStyle, width: '100px' }}>
-                        <option value="per_bag">Per Bag</option>
-                        <option value="per_quintal">Per Qtl</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* LF */}
-                  <div>
-                    <label style={labelStyle}>LF {!finalData.lfEnabled && <span style={{ color: '#e74c3c', fontSize: '10px' }}>(Admin: No)</span>}</label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <input type="number" step="0.01" value={finalData.lf}
-                        onChange={e => setFinalData({ ...finalData, lf: e.target.value, lfEnabled: true })}
-                        style={{ ...inputStyle, flex: 1 }} placeholder="Amount" />
-                      <select value={finalData.lfUnit}
-                        onChange={e => setFinalData({ ...finalData, lfUnit: e.target.value, lfEnabled: true })}
-                        style={{ ...inputStyle, width: '100px' }}>
-                        <option value="per_bag">Per Bag</option>
-                        <option value="per_quintal">Per Qtl</option>
-                      </select>
-                    </div>
-                  </div>
-
                 </div>
-              </div>
 
-              {/* EGB — only for PD/Loose and MD/Loose */}
-              {(finalData.baseRateType === 'PD_LOOSE' || finalData.baseRateType === 'MD_LOOSE' ||
-                finalData.baseRateType === 'pd_loose' || finalData.baseRateType === 'md_loose') && (
-                  <div style={fieldGroupStyle}>
-                    <label style={labelStyle}>EGB (Loose type)</label>
-                    <input type="number" step="0.01" value={finalData.egbValue}
-                      onChange={e => setFinalData({ ...finalData, egbValue: e.target.value })}
-                      style={inputStyle} placeholder="EGB value" />
+                {/* Row 2: Hamali + Brokerage + LF with Yes/No */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                  <div>
+                    <label style={labelStyle}>Hamali</label>
+                    <div style={{ display: 'flex', gap: '6px', marginBottom: '4px', fontSize: '11px' }}>
+                      <label style={radioLabelStyle}><input type="radio" name="finalHamaliEnabled" checked={finalData.hamaliEnabled}
+                        onChange={() => setFinalData({ ...finalData, hamaliEnabled: true })} /> <span style={{ color: '#27ae60', fontWeight: '600' }}>Yes</span></label>
+                      <label style={radioLabelStyle}><input type="radio" name="finalHamaliEnabled" checked={!finalData.hamaliEnabled}
+                        onChange={() => setFinalData({ ...finalData, hamaliEnabled: false, hamali: '' })} /> <span style={{ color: '#e74c3c', fontWeight: '600' }}>No</span></label>
+                    </div>
+                    {finalData.hamaliEnabled && (
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <input type="number" step="0.01" value={finalData.hamali}
+                          onChange={e => setFinalData({ ...finalData, hamali: e.target.value })}
+                          style={{ ...inputStyle, flex: 1 }} placeholder="Amount" />
+                        <select value={finalData.hamaliUnit} onChange={e => setFinalData({ ...finalData, hamaliUnit: e.target.value })}
+                          style={{ ...inputStyle, width: '85px', fontSize: '11px' }}>
+                          <option value="per_bag">Per Bag</option>
+                          <option value="per_quintal">Per Qtl</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
-                )}
-
-              {/* Custom Divisor — only for MD/Loose */}
-              {(finalData.baseRateType === 'MD_LOOSE' || finalData.baseRateType === 'md_loose') && (
-                <div style={fieldGroupStyle}>
-                  <label style={labelStyle}>Custom Divisor (MD/Loose)</label>
-                  <input type="number" step="0.01" value={finalData.customDivisor}
-                    onChange={e => setFinalData({ ...finalData, customDivisor: e.target.value })}
-                    style={inputStyle} placeholder="Custom divisor" />
+                  <div>
+                    <label style={labelStyle}>Brokerage</label>
+                    <div style={{ display: 'flex', gap: '6px', marginBottom: '4px', fontSize: '11px' }}>
+                      <label style={radioLabelStyle}><input type="radio" name="finalBrokerageEnabled" checked={finalData.brokerageEnabled}
+                        onChange={() => setFinalData({ ...finalData, brokerageEnabled: true })} /> <span style={{ color: '#27ae60', fontWeight: '600' }}>Yes</span></label>
+                      <label style={radioLabelStyle}><input type="radio" name="finalBrokerageEnabled" checked={!finalData.brokerageEnabled}
+                        onChange={() => setFinalData({ ...finalData, brokerageEnabled: false, brokerage: '' })} /> <span style={{ color: '#e74c3c', fontWeight: '600' }}>No</span></label>
+                    </div>
+                    {finalData.brokerageEnabled && (
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <input type="number" step="0.01" value={finalData.brokerage}
+                          onChange={e => setFinalData({ ...finalData, brokerage: e.target.value })}
+                          style={{ ...inputStyle, flex: 1 }} placeholder="Amount" />
+                        <select value={finalData.brokerageUnit} onChange={e => setFinalData({ ...finalData, brokerageUnit: e.target.value })}
+                          style={{ ...inputStyle, width: '85px', fontSize: '11px' }}>
+                          <option value="per_bag">Per Bag</option>
+                          <option value="per_quintal">Per Qtl</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={labelStyle}>LF</label>
+                    <div style={{ display: 'flex', gap: '6px', marginBottom: '4px', fontSize: '11px' }}>
+                      <label style={radioLabelStyle}><input type="radio" name="finalLfEnabled" checked={finalData.lfEnabled}
+                        onChange={() => setFinalData({ ...finalData, lfEnabled: true })} /> <span style={{ color: '#27ae60', fontWeight: '600' }}>Yes</span></label>
+                      <label style={radioLabelStyle}><input type="radio" name="finalLfEnabled" checked={!finalData.lfEnabled}
+                        onChange={() => setFinalData({ ...finalData, lfEnabled: false, lf: '' })} /> <span style={{ color: '#e74c3c', fontWeight: '600' }}>No</span></label>
+                    </div>
+                    {finalData.lfEnabled && (
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <input type="number" step="0.01" value={finalData.lf}
+                          onChange={e => setFinalData({ ...finalData, lf: e.target.value })}
+                          style={{ ...inputStyle, flex: 1 }} placeholder="Amount" />
+                        <select value={finalData.lfUnit} onChange={e => setFinalData({ ...finalData, lfUnit: e.target.value })}
+                          style={{ ...inputStyle, width: '85px', fontSize: '11px' }}>
+                          <option value="per_bag">Per Bag</option>
+                          <option value="per_quintal">Per Qtl</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
 
-              {/* Remarks */}
-              <div style={fieldGroupStyle}>
-                <label style={labelStyle}>Remarks</label>
-                <textarea value={finalData.remarks}
-                  onChange={e => setFinalData({ ...finalData, remarks: e.target.value })}
-                  style={{ ...inputStyle, minHeight: '50px' }} placeholder="Enter remarks..." />
-              </div>
+                {/* Row 3: EGB + Custom Divisor (conditional) */}
+                {(finalData.baseRateType === 'PD_LOOSE' || finalData.baseRateType === 'MD_LOOSE' ||
+                  finalData.baseRateType === 'pd_loose' || finalData.baseRateType === 'md_loose') && (
+                    <div style={{ display: 'grid', gridTemplateColumns: finalData.baseRateType === 'MD_LOOSE' || finalData.baseRateType === 'md_loose' ? '1fr 1fr' : '1fr', gap: '10px', marginBottom: '12px' }}>
+                      <div>
+                        <label style={labelStyle}>EGB</label>
+                        <div style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '11px' }}>
+                          <label style={{ ...radioLabelStyle, padding: '4px 10px', borderRadius: '4px', border: finalData.egbType === 'mill' ? '2px solid #27ae60' : '1px solid #ddd', backgroundColor: finalData.egbType === 'mill' ? '#e8f5e9' : 'transparent' }}>
+                            <input type="radio" name="finalEgbType" checked={finalData.egbType === 'mill'}
+                              onChange={() => setFinalData({ ...finalData, egbType: 'mill', egbValue: '0' })} />
+                            <span style={{ fontWeight: '600', color: '#2e7d32' }}>Mill</span>
+                          </label>
+                          <label style={{ ...radioLabelStyle, padding: '4px 10px', borderRadius: '4px', border: finalData.egbType === 'purchase' ? '2px solid #e67e22' : '1px solid #ddd', backgroundColor: finalData.egbType === 'purchase' ? '#fff3e0' : 'transparent' }}>
+                            <input type="radio" name="finalEgbType" checked={finalData.egbType === 'purchase'}
+                              onChange={() => setFinalData({ ...finalData, egbType: 'purchase', egbValue: '' })} />
+                            <span style={{ fontWeight: '600', color: '#e67e22' }}>Purchase</span>
+                          </label>
+                        </div>
+                        <input type="number" step="0.01" value={finalData.egbType === 'mill' ? '0' : finalData.egbValue}
+                          onChange={e => setFinalData({ ...finalData, egbValue: e.target.value })}
+                          disabled={finalData.egbType === 'mill'}
+                          style={{ ...inputStyle, backgroundColor: finalData.egbType === 'mill' ? '#f0f0f0' : '#fff', cursor: finalData.egbType === 'mill' ? 'not-allowed' : 'text' }} placeholder={finalData.egbType === 'mill' ? '0 (Mill - Own Bags)' : 'EGB value'} />
+                      </div>
+                      {(finalData.baseRateType === 'MD_LOOSE' || finalData.baseRateType === 'md_loose') && (
+                        <div>
+                          <label style={labelStyle}>Custom Divisor</label>
+                          <input type="number" step="0.01" value={finalData.customDivisor}
+                            onChange={e => setFinalData({ ...finalData, customDivisor: e.target.value })}
+                            style={inputStyle} placeholder="Divisor" />
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-              {/* Actions */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid #eee', paddingTop: '12px' }}>
-                <button type="button" onClick={() => setShowFinalPriceModal(false)} disabled={isSubmitting}
-                  style={{ padding: '8px 16px', cursor: isSubmitting ? 'not-allowed' : 'pointer', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: 'white', fontSize: '13px', color: '#666' }}>
-                  Cancel
-                </button>
-                <button type="submit" disabled={isSubmitting}
-                  style={{ padding: '8px 20px', cursor: isSubmitting ? 'not-allowed' : 'pointer', backgroundColor: isSubmitting ? '#95a5a6' : '#27ae60', color: 'white', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: '600' }}>
-                  {isSubmitting ? 'Saving...' : '💾 Save Final Price'}
-                </button>
-              </div>
-            </form>
+
+                {/* Remarks */}
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={labelStyle}>Remarks</label>
+                  <textarea value={finalData.remarks}
+                    onChange={e => setFinalData({ ...finalData, remarks: e.target.value })}
+                    style={{ ...inputStyle, minHeight: '40px' }} placeholder="Enter remarks..." />
+                </div>
+
+
+                {/* Actions */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid #eee', paddingTop: '10px' }}>
+                  <button type="button" onClick={() => setShowFinalPriceModal(false)} disabled={isSubmitting}
+                    style={{ padding: '8px 16px', cursor: isSubmitting ? 'not-allowed' : 'pointer', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: 'white', fontSize: '13px', color: '#666' }}>Cancel</button>
+                  <button type="submit" disabled={isSubmitting}
+                    style={{ padding: '8px 20px', cursor: isSubmitting ? 'not-allowed' : 'pointer', backgroundColor: isSubmitting ? '#95a5a6' : '#27ae60', color: 'white', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: '600' }}>
+                    {isSubmitting ? 'Saving...' : 'Save Final Price'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )
+        )
       }
 
       {/* Pagination Controls */}
@@ -1142,7 +1063,7 @@ const FinalReport: React.FC = () => {
           onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
           style={{ padding: '6px 16px', borderRadius: '4px', border: '1px solid #ccc', background: currentPage <= 1 ? '#eee' : '#fff', cursor: currentPage <= 1 ? 'not-allowed' : 'pointer', fontWeight: '600' }}
         >
-          ← Prev
+          ← Prev
         </button>
         <span style={{ fontSize: '13px', color: '#666' }}>
           Page {currentPage} of {totalPages} &nbsp;({totalEntries} total)
@@ -1152,7 +1073,7 @@ const FinalReport: React.FC = () => {
           onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
           style={{ padding: '6px 16px', borderRadius: '4px', border: '1px solid #ccc', background: currentPage >= totalPages ? '#eee' : '#fff', cursor: currentPage >= totalPages ? 'not-allowed' : 'pointer', fontWeight: '600' }}
         >
-          Next →
+          Next ←’
         </button>
       </div>
     </div >
@@ -1160,3 +1081,4 @@ const FinalReport: React.FC = () => {
 };
 
 export default FinalReport;
+

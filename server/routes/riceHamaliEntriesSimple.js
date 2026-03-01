@@ -1,5 +1,5 @@
 const express = require('express');
-const { auth } = require('../middleware/auth');
+const { auth, authorize } = require('../middleware/auth');
 const { sequelize } = require('../config/database');
 const cacheService = require('../services/cacheService');
 const router = express.Router();

@@ -1,7 +1,7 @@
 ﻿const express = require('express');
 const { Parser } = require('@json2csv/plainjs');
 const PDFDocument = require('pdfkit');
-const { auth } = require('../middleware/auth');
+const { auth, authorize } = require('../middleware/auth');
 const Arrival = require('../models/Arrival');
 const { Warehouse, Kunchinittu } = require('../models/Location');
 const User = require('../models/User');
@@ -562,12 +562,14 @@ router.get('/pdf/rice-stock-movements', auth, async (req, res) => {
     const { dateFrom, dateTo, productType, movementType, grouping } = req.query;
     const isWeekly = grouping === 'week';
 
-    // Build query
-    let whereClause = `WHERE status = 'approved'`;
-    if (dateFrom) whereClause += ` AND date >= '${dateFrom}'`;
-    if (dateTo) whereClause += ` AND date <= '${dateTo}'`;
-    if (productType) whereClause += ` AND product_type = '${productType}'`;
-    if (movementType) whereClause += ` AND movement_type = '${movementType}'`;
+    // Build query with parameterized values (SQL injection safe)
+    const whereParts = ["status = 'approved'"];
+    const replacements = {};
+    if (dateFrom) { whereParts.push('date >= :dateFrom'); replacements.dateFrom = dateFrom; }
+    if (dateTo) { whereParts.push('date <= :dateTo'); replacements.dateTo = dateTo; }
+    if (productType) { whereParts.push('product_type = :productType'); replacements.productType = productType; }
+    if (movementType) { whereParts.push('movement_type = :movementType'); replacements.movementType = movementType; }
+    const whereClause = 'WHERE ' + whereParts.join(' AND ');
 
     const result = await sequelize.query(`
       SELECT 
@@ -583,7 +585,7 @@ router.get('/pdf/rice-stock-movements', auth, async (req, res) => {
       ${whereClause}
       ORDER BY rsm.date DESC, rsm.id DESC
       LIMIT 2000
-    `, { type: sequelize.QueryTypes.SELECT });
+    `, { replacements, type: sequelize.QueryTypes.SELECT });
 
     // Grouping logic
     const sections = {};
@@ -659,12 +661,14 @@ router.get('/pdf/rice-stock', auth, async (req, res) => {
   try {
     const { dateFrom, dateTo, productType, locationCode } = req.query;
 
-    // Build query for stock calculation
-    let whereClause = `WHERE status = 'approved'`;
-    if (dateFrom) whereClause += ` AND date >= '${dateFrom}'`;
-    if (dateTo) whereClause += ` AND date <= '${dateTo}'`;
-    if (productType) whereClause += ` AND product_type = '${productType}'`;
-    if (locationCode) whereClause += ` AND location_code = '${locationCode}'`;
+    // Build query with parameterized values (SQL injection safe)
+    const whereParts = ["status = 'approved'"];
+    const replacements = {};
+    if (dateFrom) { whereParts.push('date >= :dateFrom'); replacements.dateFrom = dateFrom; }
+    if (dateTo) { whereParts.push('date <= :dateTo'); replacements.dateTo = dateTo; }
+    if (productType) { whereParts.push('product_type = :productType'); replacements.productType = productType; }
+    if (locationCode) { whereParts.push('location_code = :locationCode'); replacements.locationCode = locationCode; }
+    const whereClause = 'WHERE ' + whereParts.join(' AND ');
 
     // Get stock summary grouped by product type and packaging
     const stockResult = await sequelize.query(`
@@ -695,7 +699,7 @@ router.get('/pdf/rice-stock', auth, async (req, res) => {
         ELSE 0
       END) > 0
       ORDER BY product_type, variety, location_code
-    `, { type: sequelize.QueryTypes.SELECT });
+    `, { replacements, type: sequelize.QueryTypes.SELECT });
 
     // Create PDF
     const doc = new PDFDocument({ size: 'A4', margin: 40 });

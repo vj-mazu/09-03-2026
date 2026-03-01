@@ -44,7 +44,7 @@ const CookingReport: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const PAGE_SIZE = 50;
+  const PAGE_SIZE = 100;
 
   useEffect(() => {
     loadEntries();
@@ -215,31 +215,26 @@ const CookingReport: React.FC = () => {
         ) : (
           Object.entries(groupedEntries).map(([dateKey, brokerGroups]) => (
             <div key={dateKey} style={{ marginBottom: '16px' }}>
-              <div style={{
-                background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
-                color: 'white', padding: '8px 12px', fontWeight: '700', fontSize: '14px', letterSpacing: '0.5px', textAlign: 'center'
-              }}>
-                📅 {dateKey}
-              </div>
               {Object.entries(brokerGroups).map(([brokerName, brokerEntries]) => (
                 <div key={brokerName}>
                   <div style={{
-                    backgroundColor: '#e8f4fd', padding: '6px 12px', fontWeight: '700', fontSize: '13px',
-                    color: '#2c3e50', borderBottom: '1px solid #bdd7ee', textAlign: 'center'
+                    background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+                    color: 'white', padding: '8px 12px', fontWeight: '700', fontSize: '13px',
+                    letterSpacing: '0.5px', textAlign: 'center'
                   }}>
-                    👤 {brokerName} ({brokerEntries.length})
+                    {dateKey} — {brokerName} ({brokerEntries.length})
                   </div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'auto' }}>
                     <thead>
                       <tr style={{ backgroundColor: '#4a90e2', color: 'white' }}>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', width: '40px' }}>SL</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Bags</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Pkg</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Party</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Variety</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Paddy Location</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Status</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Sample Reports</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', width: '40px', whiteSpace: 'nowrap' }}>SL</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Bags</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Pkg</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Party</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Paddy Location</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Variety</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Status</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Sample Reports</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -255,21 +250,19 @@ const CookingReport: React.FC = () => {
                             statusColor = '#e74c3c';
                             statusBg = '#fdecea';
                           } else {
-                            // MEDIUM should show as PASS (green)
-                            const displayStatus = cr.status === 'MEDIUM' ? 'PASS' : cr.status;
-                            statusText = displayStatus || 'Pending';
-                            statusColor = displayStatus === 'PASS' ? '#27ae60' : displayStatus === 'FAIL' ? '#e74c3c' : '#e67e22';
-                            statusBg = displayStatus === 'PASS' ? '#e8f5e9' : displayStatus === 'FAIL' ? '#fdecea' : '#fff3e0';
+                            statusText = cr.status || 'Pending';
+                            statusColor = cr.status === 'PASS' ? '#27ae60' : cr.status === 'FAIL' ? '#e74c3c' : cr.status === 'MEDIUM' ? '#e67e22' : '#999';
+                            statusBg = cr.status === 'PASS' ? '#e8f5e9' : cr.status === 'FAIL' ? '#fdecea' : cr.status === 'MEDIUM' ? '#fff3e0' : '#f5f5f5';
                           }
                         }
                         return (
                           <tr key={entry.id} style={{ backgroundColor: index % 2 === 0 ? '#f9f9f9' : 'white' }}>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', fontWeight: '600' }}>{globalSlNo}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>{entry.bags}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>{entry.packaging || '75'} Kg</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>{entry.partyName}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>{entry.variety}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>{entry.location}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>{globalSlNo}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.bags}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.packaging || '75'} Kg</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.partyName}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.location}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.variety}</td>
                             <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>
                               <span style={{
                                 display: 'inline-block', padding: '2px 8px', borderRadius: '10px',

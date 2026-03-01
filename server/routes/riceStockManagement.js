@@ -1,7 +1,7 @@
 const express = require('express');
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { auth } = require('../middleware/auth');
+const { auth, authorize } = require('../middleware/auth');
 const LocationBifurcationService = require('../services/LocationBifurcationService');
 
 const router = express.Router();

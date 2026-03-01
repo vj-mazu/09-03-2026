@@ -59,14 +59,14 @@ const sequelize = dbUrl
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
     minifyAliases: true,
 
-    // Connection pool configuration for better performance
+    // Connection pool — tuned for 30 lakh records
     pool: {
-      max: 50,  // Increased for 10 lakh records handling
-      min: 10,  // Higher minimum for faster response under load
-      acquire: 60000,
+      max: 20,   // 20 is optimal for PostgreSQL (CPU cores * 2 + spindle count)
+      min: 5,    // Keep 5 warm connections
+      acquire: 30000,
       idle: 10000,
       evict: 1000,
-      maxUses: 2000  // Increased for high-volume operations
+      maxUses: 5000
     },
 
     // Query optimization settings
@@ -86,8 +86,15 @@ const sequelize = dbUrl
       collate: 'utf8mb4_unicode_ci'
     },
 
-    // Performance settings
-    benchmark: process.env.NODE_ENV === 'development',
+    // Performance settings — log slow queries (>500ms)
+    benchmark: true,
+    logging: (msg, timing) => {
+      if (process.env.NODE_ENV === 'development') {
+        if (timing > 500) console.warn(`\x1b[33m⚠ SLOW QUERY (${timing}ms):\x1b[0m`, msg);
+      } else if (timing > 1000) {
+        console.warn(`SLOW QUERY (${timing}ms):`, msg);
+      }
+    },
     logQueryParameters: process.env.NODE_ENV === 'development',
 
     // Retry configuration

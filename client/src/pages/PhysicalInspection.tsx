@@ -54,9 +54,8 @@ const PhysicalInspection: React.FC = () => {
       inspectionDate: string;
       lorryNumber: string;
       actualBags: number;
-      cutting1: number;
-      cutting2: number;
-      bend: number;
+      cutting: string;
+      bend: string;
       halfLorryImage: File | null;
       fullLorryImage: File | null;
       remarks: string;
@@ -131,7 +130,6 @@ const PhysicalInspection: React.FC = () => {
       const response = await axios.get<InspectionProgress>(`${API_URL}/sample-entries/${entryId}/inspection-progress`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      console.log(`Inspection progress for ${entryId}:`, response.data);
       setInspectionProgress(prev => ({
         ...prev,
         [entryId]: response.data as InspectionProgress
@@ -178,10 +176,19 @@ const PhysicalInspection: React.FC = () => {
     const progress = inspectionProgress[entryId];
 
     if (!data || !data.inspectionDate || !data.lorryNumber || !data.actualBags ||
-      data.cutting1 === undefined || data.cutting2 === undefined || data.bend === undefined) {
+      !data.cutting || !data.bend) {
       showNotification('Please fill all required fields', 'error');
       return;
     }
+
+    // Parse cutting: e.g. "12x20" → cutting1=12, cutting2=20
+    const cuttingParts = data.cutting.split(/[xX×]/);
+    const cutting1 = parseFloat(cuttingParts[0]?.trim()) || 0;
+    const cutting2 = cuttingParts.length > 1 ? (parseFloat(cuttingParts[1]?.trim()) || 0) : 0;
+
+    // Parse bend: e.g. "32x24" → bend value = 32 (or full string)
+    const bendParts = data.bend.split(/[xX×]/);
+    const bendValue = parseFloat(bendParts[0]?.trim()) || 0;
 
     // Validate bags don't exceed remaining
     if (progress && data.actualBags > progress.remainingBags) {
@@ -203,9 +210,9 @@ const PhysicalInspection: React.FC = () => {
       formData.append('inspectionDate', data.inspectionDate);
       formData.append('lorryNumber', data.lorryNumber);
       formData.append('actualBags', data.actualBags.toString());
-      formData.append('cutting1', data.cutting1.toString());
-      formData.append('cutting2', data.cutting2.toString());
-      formData.append('bend', data.bend.toString());
+      formData.append('cutting1', cutting1.toString());
+      formData.append('cutting2', cutting2.toString());
+      formData.append('bend', bendValue.toString());
       if (data.remarks) formData.append('remarks', data.remarks);
 
       // Add images if selected
@@ -251,9 +258,8 @@ const PhysicalInspection: React.FC = () => {
           inspectionDate: new Date().toISOString().split('T')[0],
           lorryNumber: '',
           actualBags: progress?.remainingBags || 0,
-          cutting1: 0,
-          cutting2: 0,
-          bend: 0,
+          cutting: '',
+          bend: '',
           halfLorryImage: null,
           fullLorryImage: null,
           remarks: ''
@@ -275,7 +281,7 @@ const PhysicalInspection: React.FC = () => {
         Lots Allotted - Physical Inspection
       </h2>
       <p style={{ marginBottom: '15px', fontSize: '12px', color: '#666' }}>
-        Reported By: {user?.username || 'Unknown'} (Automatic)
+        Reported by: {user?.username || 'Unknown'} (Automatic)
       </p>
 
       <div style={{
@@ -292,8 +298,8 @@ const PhysicalInspection: React.FC = () => {
               <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'left', width: '100px' }}>Party</th>
               <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'left', width: '80px' }}>Location</th>
               <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'right', width: '80px' }}>Total</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'right', width: '80px' }}>Inspected</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'right', width: '80px' }}>Remaining</th>
+              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'right', width: '80px' }}>Loading</th>
+              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'right', width: '80px' }}>Balance</th>
               <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', width: '120px' }}>Progress</th>
               <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', width: '100px' }}>Actions</th>
             </tr>
@@ -441,7 +447,7 @@ const PhysicalInspection: React.FC = () => {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px' }}>
                               <div>
                                 <label style={{ display: 'block', marginBottom: '5px', fontSize: '11px', fontWeight: '600' }}>
-                                  Inspection Date *
+                                  Inspection date *
                                 </label>
                                 <input
                                   type="date"
@@ -458,25 +464,26 @@ const PhysicalInspection: React.FC = () => {
                               </div>
                               <div>
                                 <label style={{ display: 'block', marginBottom: '5px', fontSize: '11px', fontWeight: '600' }}>
-                                  Lorry Number *
+                                  Lorry number *
                                 </label>
                                 <input
                                   type="text"
                                   value={inspectionData[entry.id]?.lorryNumber || ''}
-                                  onChange={(e) => handleInputChange(entry.id, 'lorryNumber', e.target.value)}
+                                  onChange={(e) => handleInputChange(entry.id, 'lorryNumber', e.target.value.toUpperCase())}
                                   placeholder="Enter lorry number"
                                   style={{
                                     width: '100%',
                                     padding: '6px',
                                     fontSize: '11px',
                                     border: '1px solid #ddd',
-                                    borderRadius: '3px'
+                                    borderRadius: '3px',
+                                    textTransform: 'uppercase'
                                   }}
                                 />
                               </div>
                               <div>
                                 <label style={{ display: 'block', marginBottom: '5px', fontSize: '11px', fontWeight: '600' }}>
-                                  Actual Bags (This Lorry) *
+                                  Actual bags (this lorry) *
                                 </label>
                                 <input
                                   type="number"
@@ -499,48 +506,29 @@ const PhysicalInspection: React.FC = () => {
                                     <label style={{ display: 'block', marginBottom: '5px', fontSize: '11px', fontWeight: '600' }}>
                                       Cutting *
                                     </label>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                      <input
-                                        type="number"
-                                        step="0.01"
-                                        value={inspectionData[entry.id]?.cutting1 || ''}
-                                        onChange={(e) => handleInputChange(entry.id, 'cutting1', Number(e.target.value))}
-                                        placeholder="Cutting 1"
-                                        style={{
-                                          flex: 1,
-                                          padding: '6px',
-                                          fontSize: '11px',
-                                          border: '1px solid #ddd',
-                                          borderRadius: '3px'
-                                        }}
-                                      />
-                                      <span style={{ fontSize: '12px', fontWeight: '700', color: '#555' }}>x</span>
-                                      <input
-                                        type="number"
-                                        step="0.01"
-                                        value={inspectionData[entry.id]?.cutting2 || ''}
-                                        onChange={(e) => handleInputChange(entry.id, 'cutting2', Number(e.target.value))}
-                                        placeholder="Cutting 2"
-                                        style={{
-                                          flex: 1,
-                                          padding: '6px',
-                                          fontSize: '11px',
-                                          border: '1px solid #ddd',
-                                          borderRadius: '3px'
-                                        }}
-                                      />
-                                    </div>
+                                    <input
+                                      type="text"
+                                      value={inspectionData[entry.id]?.cutting || ''}
+                                      onChange={(e) => handleInputChange(entry.id, 'cutting', e.target.value)}
+                                      placeholder="e.g. 12x20"
+                                      style={{
+                                        width: '100%',
+                                        padding: '6px',
+                                        fontSize: '11px',
+                                        border: '1px solid #ddd',
+                                        borderRadius: '3px'
+                                      }}
+                                    />
                                   </div>
                                   <div style={{ flex: 1 }}>
                                     <label style={{ display: 'block', marginBottom: '5px', fontSize: '11px', fontWeight: '600' }}>
                                       Bend *
                                     </label>
                                     <input
-                                      type="number"
-                                      step="0.01"
+                                      type="text"
                                       value={inspectionData[entry.id]?.bend || ''}
-                                      onChange={(e) => handleInputChange(entry.id, 'bend', Number(e.target.value))}
-                                      placeholder="Enter bend"
+                                      onChange={(e) => handleInputChange(entry.id, 'bend', e.target.value)}
+                                      placeholder="e.g. 32"
                                       style={{
                                         width: '100%',
                                         padding: '6px',
@@ -554,7 +542,7 @@ const PhysicalInspection: React.FC = () => {
                               </div>
                               <div>
                                 <label style={{ display: 'block', marginBottom: '5px', fontSize: '11px', fontWeight: '600' }}>
-                                  Half Lorry Image (Optional)
+                                  Half lorry image (optional)
                                 </label>
                                 <input
                                   type="file"
@@ -571,7 +559,7 @@ const PhysicalInspection: React.FC = () => {
                               </div>
                               <div>
                                 <label style={{ display: 'block', marginBottom: '5px', fontSize: '11px', fontWeight: '600' }}>
-                                  Full Lorry Image (Optional)
+                                  Full lorry image (optional)
                                 </label>
                                 <input
                                   type="file"

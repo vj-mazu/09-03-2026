@@ -1,7 +1,7 @@
 const express = require('express');
 const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
-const { auth } = require('../middleware/auth');
+const { auth, authorize } = require('../middleware/auth');
 const RiceProduction = require('../models/RiceProduction');
 const Outturn = require('../models/Outturn');
 const Packaging = require('../models/Packaging');
@@ -92,7 +92,7 @@ router.get('/', auth, async (req, res) => {
         const { QueryTypes } = require('sequelize');
         const replacements = {};
         const movementWhereParts = ["rsm.status = 'approved'"];
-        
+
         // Month-wise filtering with parameterization
         if (month) {
             const [year, monthNum] = month.split('-');
@@ -111,13 +111,13 @@ router.get('/', auth, async (req, res) => {
                 replacements.dateTo = dateTo;
             }
         }
-        
+
         // Product type filtering with parameterization
         if (productType) {
             movementWhereParts.push('rsm.product_type = :productType');
             replacements.productType = productType;
         }
-        
+
         // Location code filtering with parameterization
         if (locationCode) {
             movementWhereParts.push('rsm.location_code = :locationCode');

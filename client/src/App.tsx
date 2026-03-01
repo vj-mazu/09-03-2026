@@ -5,6 +5,7 @@ import { LocationProvider } from './contexts/LocationContext';
 import { NotificationProvider, useNotification } from './contexts/NotificationContext';
 import { setNotificationCallback } from './utils/toast';
 import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 import Layout from './components/Layout';
 import './globalNotification.css';
 import './App.css';
@@ -35,6 +36,7 @@ const ManagerFinancialPage = React.lazy(() => import('./pages/ManagerFinancialPa
 const FinalReviewPage = React.lazy(() => import('./pages/FinalReviewPage'));
 const SampleWorkflow = React.lazy(() => import('./pages/SampleWorkflow'));
 const ManagerSampleReports = React.lazy(() => import('./pages/ManagerSampleReports'));
+const EGBLedger = React.lazy(() => import('./pages/EGBLedger'));
 
 // Lightweight loading spinner for page transitions
 const PageLoader = () => (
@@ -62,230 +64,242 @@ const AppContent: React.FC = () => {
     <Router>
       <div className="App">
         <Suspense fallback={<PageLoader />}>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Dashboard />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/arrivals"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Arrivals />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/records"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Records />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/locations"
-              element={
-                <ProtectedRoute roles={['manager', 'admin']}>
-                  <Layout>
-                    <Locations />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/ledger"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <KunchinintuLedger />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/rice-ledger"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <RiceLedger />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/hamali"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Hamali />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/records/purchase/:arrivalId/add-rate"
-              element={
-                <ProtectedRoute roles={['manager', 'admin']}>
-                  <Layout>
-                    <AddPurchaseRate />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/hamali-book"
-              element={
-                <ProtectedRoute roles={['manager', 'admin']}>
-                  <Layout>
-                    <HamaliBookSimple />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/users"
-              element={
-                <ProtectedRoute roles={['admin']}>
-                  <Layout>
-                    <UserManagement />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/pending-approvals"
-              element={
-                <ProtectedRoute roles={['manager', 'admin']}>
-                  <Layout>
-                    <PendingApprovals />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/sample-entry"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <SampleEntry />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/sample-entry-ledger"
-              element={
-                <ProtectedRoute>
-                  <Layout>
-                    <SampleEntryLedger />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/owner-sample-reports"
-              element={
-                <ProtectedRoute roles={['admin']}>
-                  <Layout>
-                    <OwnerSampleReports />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/manager-sample-reports"
-              element={
-                <ProtectedRoute roles={['manager', 'admin']}>
-                  <Layout>
-                    <ManagerSampleReports />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/allotting-supervisors"
-              element={
-                <ProtectedRoute roles={['manager']}>
-                  <Layout>
-                    <AllottingSupervisors />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/physical-inspection"
-              element={
-                <ProtectedRoute roles={['physical_supervisor']}>
-                  <Layout>
-                    <PhysicalInspection />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/inventory-entry"
-              element={
-                <ProtectedRoute roles={['inventory_staff', 'admin']}>
-                  <Layout>
-                    <InventoryEntry />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/owner-financial"
-              element={
-                <ProtectedRoute roles={['admin']}>
-                  <Layout>
-                    <OwnerFinancialPage />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/manager-financial"
-              element={
-                <ProtectedRoute roles={['manager', 'admin']}>
-                  <Layout>
-                    <ManagerFinancialPage />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/final-review"
-              element={
-                <ProtectedRoute roles={['manager', 'admin']}>
-                  <Layout>
-                    <FinalReviewPage />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/sample-workflow"
-              element={
-                <ProtectedRoute roles={['manager', 'admin']}>
-                  <Layout>
-                    <SampleWorkflow />
-                  </Layout>
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Dashboard />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/arrivals"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Arrivals />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/records"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Records />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/locations"
+                element={
+                  <ProtectedRoute roles={['manager', 'admin']}>
+                    <Layout>
+                      <Locations />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/ledger"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <KunchinintuLedger />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/rice-ledger"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <RiceLedger />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/hamali"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Hamali />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/records/purchase/:arrivalId/add-rate"
+                element={
+                  <ProtectedRoute roles={['manager', 'admin']}>
+                    <Layout>
+                      <AddPurchaseRate />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/hamali-book"
+                element={
+                  <ProtectedRoute roles={['manager', 'admin']}>
+                    <Layout>
+                      <HamaliBookSimple />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/users"
+                element={
+                  <ProtectedRoute roles={['admin']}>
+                    <Layout>
+                      <UserManagement />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/pending-approvals"
+                element={
+                  <ProtectedRoute roles={['manager', 'admin']}>
+                    <Layout>
+                      <PendingApprovals />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/sample-entry"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <SampleEntry />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/sample-entry-ledger"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <SampleEntryLedger />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/owner-sample-reports"
+                element={
+                  <ProtectedRoute roles={['admin']}>
+                    <Layout>
+                      <OwnerSampleReports />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/manager-sample-reports"
+                element={
+                  <ProtectedRoute roles={['manager', 'admin']}>
+                    <Layout>
+                      <ManagerSampleReports />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/allotting-supervisors"
+                element={
+                  <ProtectedRoute roles={['manager']}>
+                    <Layout>
+                      <AllottingSupervisors />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/physical-inspection"
+                element={
+                  <ProtectedRoute roles={['physical_supervisor']}>
+                    <Layout>
+                      <PhysicalInspection />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/inventory-entry"
+                element={
+                  <ProtectedRoute roles={['inventory_staff', 'admin']}>
+                    <Layout>
+                      <InventoryEntry />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/owner-financial"
+                element={
+                  <ProtectedRoute roles={['admin']}>
+                    <Layout>
+                      <OwnerFinancialPage />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/manager-financial"
+                element={
+                  <ProtectedRoute roles={['manager', 'admin']}>
+                    <Layout>
+                      <ManagerFinancialPage />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/final-review"
+                element={
+                  <ProtectedRoute roles={['manager', 'admin']}>
+                    <Layout>
+                      <FinalReviewPage />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/sample-workflow"
+                element={
+                  <ProtectedRoute roles={['manager', 'admin']}>
+                    <Layout>
+                      <SampleWorkflow />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/egb-ledger"
+                element={
+                  <ProtectedRoute roles={['manager', 'admin']}>
+                    <Layout>
+                      <EGBLedger />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </ErrorBoundary>
         </Suspense>
       </div>
     </Router>

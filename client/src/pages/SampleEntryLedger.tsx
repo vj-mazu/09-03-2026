@@ -80,7 +80,7 @@ const EntryRow: React.FC<{
             backgroundColor: entry.workflowStatus === 'COMPLETED' ? '#d4edda' : entry.workflowStatus === 'FAILED' ? '#f8d7da' : '#cce5ff',
             color: entry.workflowStatus === 'COMPLETED' ? '#155724' : entry.workflowStatus === 'FAILED' ? '#721c24' : '#004085'
           }}>
-            {entry.workflowStatus}
+            {entry.workflowStatus.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase())}
           </span>
         </td>
         <td style={{ ...cellStyle, textAlign: 'center' }}>{entry.qualityParameters?.moisture || '-'}</td>
@@ -544,7 +544,7 @@ const SampleEntryLedger: React.FC = () => {
                 whiteSpace: 'nowrap',
                 fontWeight: 600,
                 fontSize: '8.5px',
-                textTransform: 'uppercase',
+                textTransform: 'capitalize',
                 letterSpacing: '0.4px',
                 position: 'sticky',
                 top: 0,

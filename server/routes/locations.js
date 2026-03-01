@@ -8,28 +8,53 @@ const User = require('../models/User');
 
 const router = express.Router();
 
+// In-memory cache for location data (changes rarely, queried constantly)
+const locationCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function getCached(key) {
+  const entry = locationCache.get(key);
+  if (entry && Date.now() - entry.time < CACHE_TTL) return entry.data;
+  locationCache.delete(key);
+  return null;
+}
+
+function setCache(key, data) {
+  locationCache.set(key, { data, time: Date.now() });
+}
+
+function invalidateCache(prefix) {
+  for (const key of locationCache.keys()) {
+    if (key.startsWith(prefix)) locationCache.delete(key);
+  }
+}
+
 // ===== WAREHOUSES =====
 
 // Get all warehouses
 router.get('/warehouses', auth, async (req, res) => {
   try {
+    const cached = getCached('warehouses');
+    if (cached) { res.set('Cache-Control', 'public, max-age=300'); return res.json(cached); }
+
     const warehouses = await Warehouse.findAll({
       where: { isActive: true },
-      attributes: ['id', 'name', 'code', 'location'], // Only essential fields
+      attributes: ['id', 'name', 'code', 'location'],
       order: [['name', 'ASC']],
       include: [{
         model: Kunchinittu,
         as: 'kunchinittus',
-        attributes: ['id', 'name', 'code'], // Only essential fields
+        attributes: ['id', 'name', 'code'],
         required: false
       }],
       raw: false,
       nest: true
     });
 
-    // Cache headers for 5 minutes
+    const result = { warehouses };
+    setCache('warehouses', result);
     res.set('Cache-Control', 'public, max-age=300');
-    res.json({ warehouses });
+    res.json(result);
   } catch (error) {
     console.error('Get warehouses error:', error);
     res.status(500).json({ error: 'Failed to fetch warehouses' });
@@ -54,6 +79,7 @@ router.post('/warehouses', auth, authorize('manager', 'admin'), async (req, res)
       return res.status(400).json({ error: 'Warehouse code already exists' });
     }
 
+    invalidateCache('warehouses');
     const warehouse = await Warehouse.create({
       name,
       code,
@@ -91,6 +117,7 @@ router.put('/warehouses/:id', auth, authorize('manager', 'admin'), async (req, r
       }
     }
 
+    invalidateCache('warehouses');
     await warehouse.update({ name, code, location, capacity });
 
     res.json({
@@ -112,6 +139,7 @@ router.delete('/warehouses/:id', auth, authorize('manager', 'admin'), async (req
     }
 
     // Soft delete - mark as inactive instead of deleting
+    invalidateCache('warehouses');
     await warehouse.update({ isActive: false });
 
     res.json({ message: 'Warehouse deleted successfully' });
@@ -127,9 +155,10 @@ router.delete('/warehouses/:id', auth, authorize('manager', 'admin'), async (req
 router.get('/kunchinittus', auth, async (req, res) => {
   try {
     const { includeClosed } = req.query;
+    const cacheKey = `kunchinittus_${includeClosed || 'false'}`;
+    const cached = getCached(cacheKey);
+    if (cached) { res.set('Cache-Control', 'public, max-age=300'); return res.json(cached); }
 
-    // By default, exclude closed kunchinittus from dropdown selections
-    // Use ?includeClosed=true to get all (for admin views)
     const where = { isActive: true };
     if (includeClosed !== 'true') {
       where.isClosed = false;
@@ -137,7 +166,7 @@ router.get('/kunchinittus', auth, async (req, res) => {
 
     const kunchinittus = await Kunchinittu.findAll({
       where,
-      attributes: ['id', 'name', 'code', 'warehouseId', 'varietyId', 'isClosed'], // Include isClosed status
+      attributes: ['id', 'name', 'code', 'warehouseId', 'varietyId', 'isClosed'],
       order: [['name', 'ASC']],
       include: [
         { model: Warehouse, as: 'warehouse', attributes: ['id', 'name', 'code'], required: false },
@@ -147,9 +176,10 @@ router.get('/kunchinittus', auth, async (req, res) => {
       nest: true
     });
 
-    // Cache headers for 5 minutes
+    const result = { kunchinittus };
+    setCache(cacheKey, result);
     res.set('Cache-Control', 'public, max-age=300');
-    res.json({ kunchinittus });
+    res.json(result);
   } catch (error) {
     console.error('Get kunchinittus error:', error);
     res.status(500).json({ error: 'Failed to fetch kunchinittus' });
@@ -196,6 +226,8 @@ router.post('/kunchinittus', auth, authorize('manager', 'admin'), async (req, re
       });
     }
 
+    invalidateCache('kunchinittus');
+    invalidateCache('warehouses');
     const kunchinittu = await Kunchinittu.create({
       name,
       code,
@@ -265,6 +297,8 @@ router.put('/kunchinittus/:id', auth, authorize('manager', 'admin'), async (req,
       }
     }
 
+    invalidateCache('kunchinittus');
+    invalidateCache('warehouses');
     await kunchinittu.update({ name, code, warehouseId, varietyId, capacity });
 
     const updatedKunchinittu = await Kunchinittu.findByPk(kunchinittu.id, {
@@ -293,6 +327,8 @@ router.delete('/kunchinittus/:id', auth, authorize('manager', 'admin'), async (r
     }
 
     // Soft delete
+    invalidateCache('kunchinittus');
+    invalidateCache('warehouses');
     await kunchinittu.update({ isActive: false });
 
     res.json({ message: 'Kunchinittu deleted successfully' });
@@ -307,16 +343,20 @@ router.delete('/kunchinittus/:id', auth, authorize('manager', 'admin'), async (r
 // Get all varieties
 router.get('/varieties', auth, async (req, res) => {
   try {
+    const cached = getCached('varieties');
+    if (cached) { res.set('Cache-Control', 'public, max-age=600'); return res.json(cached); }
+
     const varieties = await Variety.findAll({
       where: { isActive: true },
-      attributes: ['id', 'name', 'code'], // Only essential fields
+      attributes: ['id', 'name', 'code'],
       order: [['name', 'ASC']],
-      raw: true // Faster, returns plain objects
+      raw: true
     });
 
-    // Cache headers for 10 minutes (varieties change rarely)
+    const result = { varieties };
+    setCache('varieties', result);
     res.set('Cache-Control', 'public, max-age=600');
-    res.json({ varieties });
+    res.json(result);
   } catch (error) {
     console.error('Get varieties error:', error);
     res.status(500).json({ error: 'Failed to fetch varieties' });
@@ -332,18 +372,29 @@ router.post('/varieties', auth, authorize('manager', 'admin'), async (req, res) 
       return res.status(400).json({ error: 'Name and code are required' });
     }
 
-    // Check for duplicate
+    const { Op } = require('sequelize');
+
+    // Check for duplicate name or code
     const existing = await Variety.findOne({
-      where: { code }
+      where: {
+        [Op.or]: [
+          { code: code.trim().toUpperCase() },
+          { name: name.trim().toUpperCase() }
+        ]
+      }
     });
 
     if (existing) {
-      return res.status(400).json({ error: 'Variety code already exists' });
+      if (existing.name === name.trim().toUpperCase()) {
+        return res.status(400).json({ error: `Variety name '${name}' already exists` });
+      }
+      return res.status(400).json({ error: `Variety code '${code}' already exists` });
     }
 
+    invalidateCache('varieties');
     const variety = await Variety.create({
-      name,
-      code,
+      name: name.trim().toUpperCase(),
+      code: code.trim().toUpperCase(),
       description
     });
 
@@ -379,6 +430,7 @@ router.put('/varieties/:id', auth, authorize('manager', 'admin'), async (req, re
       }
     }
 
+    invalidateCache('varieties');
     await variety.update({ name, code, description });
 
     // CASCADE UPDATE: If variety name changed, update all Arrivals with the old variety name
@@ -414,6 +466,7 @@ router.delete('/varieties/:id', auth, authorize('manager', 'admin'), async (req,
     }
 
     // Soft delete
+    invalidateCache('varieties');
     await variety.update({ isActive: false });
 
     res.json({ message: 'Variety deleted successfully' });
@@ -428,15 +481,12 @@ router.delete('/varieties/:id', auth, authorize('manager', 'admin'), async (req,
 // Get all rice stock locations
 router.get('/rice-stock-locations', auth, async (req, res) => {
   try {
-    console.log('📍 Fetching rice stock locations...');
     const { includeInactive } = req.query;
 
     const where = {};
     if (!includeInactive) {
       where.isActive = true;
     }
-
-    console.log('Query where:', where);
 
     // Fetch locations without User association to avoid circular dependency issues
     const locations = await RiceStockLocation.findAll({
@@ -446,7 +496,7 @@ router.get('/rice-stock-locations', auth, async (req, res) => {
       raw: true
     });
 
-    console.log('✅ Found locations:', locations.length);
+
 
     // Manually fetch creator usernames if needed
     if (locations.length > 0) {
@@ -614,6 +664,9 @@ router.delete('/rice-stock-locations/:id', auth, authorize('admin'), async (req,
 // Get all rice varieties
 router.get('/rice-varieties', auth, async (req, res) => {
   try {
+    const cached = getCached('rice-varieties');
+    if (cached) { res.set('Cache-Control', 'public, max-age=300'); return res.json(cached); }
+
     const varieties = await RiceVariety.findAll({
       where: { isActive: true },
       attributes: ['id', 'name', 'code'],
@@ -621,8 +674,10 @@ router.get('/rice-varieties', auth, async (req, res) => {
       raw: true
     });
 
+    const result = { varieties };
+    setCache('rice-varieties', result);
     res.set('Cache-Control', 'public, max-age=300');
-    res.json({ varieties });
+    res.json(result);
   } catch (error) {
     console.error('Get rice varieties error:', error);
     res.status(500).json({ error: 'Failed to fetch rice varieties' });

@@ -1,6 +1,6 @@
 const express = require('express');
 const PDFDocument = require('pdfkit');
-const { auth } = require('../middleware/auth');
+const { auth, authorize } = require('../middleware/auth');
 const Arrival = require('../models/Arrival');
 const { Warehouse, Kunchinittu } = require('../models/Location');
 const User = require('../models/User');
@@ -45,7 +45,7 @@ router.get('/pdf/:date', auth, async (req, res) => {
     // Create PDF
     const doc = new PDFDocument({ margin: 30, size: 'A4', layout: 'portrait' });
     const buffers = [];
-    
+
     doc.on('data', buffers.push.bind(buffers));
     doc.on('end', () => {
       const pdfData = Buffer.concat(buffers);
@@ -62,21 +62,21 @@ router.get('/pdf/:date', auth, async (req, res) => {
 
     // Header
     doc.fontSize(20).font('Helvetica-Bold').fillColor([0, 0, 0])
-       .text('Mother India Stock Management', { align: 'center' });
+      .text('Mother India Stock Management', { align: 'center' });
     doc.moveDown(0.3);
-    
+
     const typeLabel = type === 'purchase' ? 'Purchase Records' :
-                     type === 'shifting' ? 'Shifting Records' :
-                     type === 'stock' ? 'Paddy Stock Records' : 'All Arrivals';
-    
+      type === 'shifting' ? 'Shifting Records' :
+        type === 'stock' ? 'Paddy Stock Records' : 'All Arrivals';
+
     doc.fontSize(16).font('Helvetica-Bold')
-       .text(typeLabel, { align: 'center' });
+      .text(typeLabel, { align: 'center' });
     doc.moveDown(0.3);
-    
+
     doc.fontSize(12).font('Helvetica')
-       .text(`Date: ${new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`, { align: 'center' });
+      .text(`Date: ${new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`, { align: 'center' });
     doc.fontSize(10)
-       .text(`Generated: ${new Date().toLocaleString('en-GB')}`, { align: 'center' });
+      .text(`Generated: ${new Date().toLocaleString('en-GB')}`, { align: 'center' });
     doc.moveDown(1);
 
     // Define columns based on type - EXACT MATCH TO FRONTEND
@@ -156,50 +156,50 @@ router.get('/pdf/:date', auth, async (req, res) => {
     if (type === 'stock') {
       // Stock format: Opening + Movements + Closing (like frontend)
       let y = doc.y;
-      
+
       // Group records by date to calculate opening/closing
       const totalBags = records.reduce((sum, r) => sum + Number(r.bags || 0), 0);
-      
+
       // Opening Stock section (simplified - showing previous cumulative)
       doc.fontSize(11).font('Helvetica-Bold').fillColor([0, 0, 0])
-         .text('Opening Stock', 30, y);
+        .text('Opening Stock', 30, y);
       y += 20;
-      
+
       // Movement records with color coding
       records.forEach((record, idx) => {
         if (y > 720) {
           doc.addPage();
           y = 50;
         }
-        
+
         const isPurchase = record.movementType === 'purchase';
         const bgColor = isPurchase ? [212, 237, 218] : [226, 212, 237]; // green or purple
-        
+
         doc.rect(30, y, 535, 22).fillAndStroke(bgColor, [200, 200, 200]);
         doc.fontSize(8).font('Helvetica').fillColor([0, 0, 0]);
-        
+
         const bags = isPurchase ? `+${record.bags || 0}` : `+-${record.bags || 0}`;
         const dateVar = `${new Date(record.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })} ${record.variety || '-'}`;
         const broker = record.broker || '-';
-        const location = isPurchase 
+        const location = isPurchase
           ? `${record.toKunchinittu?.code || ''} - ${record.toWarehouse?.name || ''}`
           : `${record.fromKunchinittu?.code || ''} - ${record.fromWarehouse?.name || ''} to ${record.toKunchinittu?.code || ''} - ${record.toWarehouseShift?.name || ''}`;
-        
+
         doc.font('Helvetica-Bold').text(bags, 35, y + 6, { width: 60, ellipsis: true });
         doc.font('Helvetica').text(dateVar, 100, y + 6, { width: 120, ellipsis: true });
         doc.text(broker, 225, y + 6, { width: 90, ellipsis: true });
         doc.text(location, 320, y + 6, { width: 235, ellipsis: true });
-        
+
         y += 22;
       });
-      
+
       // Closing Stock section
       y += 10;
       doc.rect(30, y, 535, 2).fillAndStroke([0, 0, 0], [0, 0, 0]);
       y += 10;
       doc.fontSize(11).font('Helvetica-Bold').fillColor([0, 0, 0])
-         .text(`${totalBags} Closing Stock`, 30, y);
-      
+        .text(`${totalBags} Closing Stock`, 30, y);
+
       doc.end();
       return;
     }
@@ -207,16 +207,16 @@ router.get('/pdf/:date', auth, async (req, res) => {
     // Regular table rendering for other types
     const tableTop = doc.y;
     const tableLeft = 30;
-    
+
     // Header background (dark blue like frontend)
-    doc.rect(tableLeft, tableTop, colWidths.reduce((a,b) => a+b, 0), 25)
-       .fillAndStroke([46, 117, 182], [46, 117, 182]); // #2E75B6
-    
+    doc.rect(tableLeft, tableTop, colWidths.reduce((a, b) => a + b, 0), 25)
+      .fillAndStroke([46, 117, 182], [46, 117, 182]); // #2E75B6
+
     doc.fontSize(8).font('Helvetica-Bold').fillColor([255, 255, 255]);
     headers.forEach((header, i) => {
-      const x = tableLeft + colWidths.slice(0, i).reduce((a,b) => a+b, 0);
-      doc.text(header, x + 3, tableTop + 8, { 
-        width: colWidths[i] - 6, 
+      const x = tableLeft + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
+      doc.text(header, x + 3, tableTop + 8, {
+        width: colWidths[i] - 6,
         align: 'center',
         ellipsis: true,
         lineBreak: false
@@ -231,15 +231,15 @@ router.get('/pdf/:date', auth, async (req, res) => {
       if (y > 720) {
         doc.addPage();
         y = 50;
-        
+
         // Repeat header on new page
-        doc.rect(tableLeft, y, colWidths.reduce((a,b) => a+b, 0), 25)
-           .fillAndStroke([46, 117, 182], [46, 117, 182]);
+        doc.rect(tableLeft, y, colWidths.reduce((a, b) => a + b, 0), 25)
+          .fillAndStroke([46, 117, 182], [46, 117, 182]);
         doc.fontSize(8).font('Helvetica-Bold').fillColor([255, 255, 255]);
         headers.forEach((header, i) => {
-          const x = tableLeft + colWidths.slice(0, i).reduce((a,b) => a+b, 0);
-          doc.text(header, x + 3, y + 8, { 
-            width: colWidths[i] - 6, 
+          const x = tableLeft + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
+          doc.text(header, x + 3, y + 8, {
+            width: colWidths[i] - 6,
             align: 'center',
             ellipsis: true,
             lineBreak: false
@@ -250,37 +250,37 @@ router.get('/pdf/:date', auth, async (req, res) => {
 
       // Alternating row colors (light blue like frontend)
       const rowColor = idx % 2 === 0 ? [189, 215, 238] : [255, 255, 255]; // #BDD7EE or white
-      doc.rect(tableLeft, y, colWidths.reduce((a,b) => a+b, 0), 18)
-         .fillAndStroke(rowColor, [155, 194, 230]); // #9BC2E6 border
-      
+      doc.rect(tableLeft, y, colWidths.reduce((a, b) => a + b, 0), 18)
+        .fillAndStroke(rowColor, [155, 194, 230]); // #9BC2E6 border
+
       doc.fontSize(7).font('Helvetica').fillColor([0, 0, 0]);
       const rowData = getRowData(record);
-      
+
       rowData.forEach((val, i) => {
-        const x = tableLeft + colWidths.slice(0, i).reduce((a,b) => a+b, 0);
+        const x = tableLeft + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
         const cellWidth = colWidths[i] - 6;
         const text = String(val);
-        
+
         // Use ellipsis: true to prevent text overflow
-        doc.text(text, x + 3, y + 4, { 
-          width: cellWidth, 
+        doc.text(text, x + 3, y + 4, {
+          width: cellWidth,
           align: 'center',
           ellipsis: true,
           lineBreak: false
         });
       });
-      
+
       y += 18;
     });
 
     // Summary footer
     doc.moveDown(2);
     doc.fontSize(10).font('Helvetica-Bold').fillColor([0, 0, 0])
-       .text(`Total Records: ${records.length}`, tableLeft, y + 10);
-    
+      .text(`Total Records: ${records.length}`, tableLeft, y + 10);
+
     const totalBags = records.reduce((sum, r) => sum + Number(r.bags || 0), 0);
     const totalNetWeight = records.reduce((sum, r) => sum + Number(r.netWeight || 0), 0);
-    
+
     doc.text(`Total Bags: ${totalBags}`, tableLeft + 200, y + 10);
     doc.text(`Total Net Weight: ${totalNetWeight.toFixed(2)} kg`, tableLeft + 400, y + 10);
 

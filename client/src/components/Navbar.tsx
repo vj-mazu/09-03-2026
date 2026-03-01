@@ -307,7 +307,7 @@ const Navbar: React.FC = () => {
     '/final-review', '/owner-sample-reports', '/allotting-supervisors',
     '/physical-inspection', '/pending-approvals', '/loading-lots'
   ];
-  const ledgersPaths = ['/ledger', '/rice-ledger', '/sample-entry-ledger', '/hamali-book'];
+  const ledgersPaths = ['/ledger', '/rice-ledger', '/sample-entry-ledger', '/hamali-book', '/egb-ledger'];
 
   const isWorkflowActive = workflowPaths.some(p => location.pathname === p);
   const isLedgersActive = ledgersPaths.some(p => location.pathname === p);
@@ -358,6 +358,7 @@ const Navbar: React.FC = () => {
                   <DropdownLink to="/ledger" $active={isActive('/ledger')}>Kunchinittu Ledger</DropdownLink>
                   <DropdownLink to="/rice-ledger" $active={isActive('/rice-ledger')}>Rice Ledger</DropdownLink>
                   <DropdownLink to="/hamali-book" $active={isActive('/hamali-book')}>Hamali Book</DropdownLink>
+                  <DropdownLink to="/egb-ledger" $active={isActive('/egb-ledger')}>EGB Ledger</DropdownLink>
                 </DropdownMenu>
               )}
             </DropdownWrapper>

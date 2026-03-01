@@ -1,5 +1,5 @@
 const express = require('express');
-const { auth } = require('../middleware/auth');
+const { auth, authorize } = require('../middleware/auth');
 const { sequelize } = require('../config/database');
 const router = express.Router();
 
@@ -37,9 +37,9 @@ router.get('/', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching rice hamali rates:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Failed to fetch rice hamali rates' 
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch rice hamali rates'
     });
   }
 });
@@ -48,7 +48,7 @@ router.get('/', auth, async (req, res) => {
 router.get('/work-type/:workType', auth, async (req, res) => {
   try {
     const { workType } = req.params;
-    
+
     const [rates] = await sequelize.query(`
       SELECT 
         id,
@@ -71,9 +71,9 @@ router.get('/work-type/:workType', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching rice hamali rates by work type:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Failed to fetch rice hamali rates' 
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch rice hamali rates'
     });
   }
 });
@@ -113,9 +113,9 @@ router.post('/', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error adding rice hamali rate:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Failed to add rice hamali rate' 
+    res.status(500).json({
+      success: false,
+      error: 'Failed to add rice hamali rate'
     });
   }
 });
@@ -176,9 +176,9 @@ router.put('/:id', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating rice hamali rate:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Failed to update rice hamali rate' 
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update rice hamali rate'
     });
   }
 });
@@ -210,9 +210,9 @@ router.delete('/:id', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error deleting rice hamali rate:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Failed to delete rice hamali rate' 
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete rice hamali rate'
     });
   }
 });

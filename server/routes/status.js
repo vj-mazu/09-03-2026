@@ -1,5 +1,5 @@
 const express = require('express');
-const { auth } = require('../middleware/auth');
+const { auth, authorize } = require('../middleware/auth');
 const StatusManagementService = require('../services/StatusManagementService');
 
 const router = express.Router();
@@ -8,9 +8,9 @@ const router = express.Router();
 router.get('/:entryType/:entryId', auth, async (req, res) => {
     try {
         const { entryType, entryId } = req.params;
-        
+
         const status = await StatusManagementService.getStatus(
-            Number.parseInt(entryId), 
+            Number.parseInt(entryId),
             entryType
         );
 
@@ -83,10 +83,10 @@ router.post('/:entryType/:entryId', auth, async (req, res) => {
         });
     } catch (error) {
         console.error('❌ Error updating entry status:', error);
-        
+
         let errorMessage = 'Failed to update entry status';
         let errorCode = 'STATUS_UPDATE_ERROR';
-        
+
         if (error.message.includes('Invalid status')) {
             errorMessage = error.message;
             errorCode = 'INVALID_STATUS';
@@ -94,7 +94,7 @@ router.post('/:entryType/:entryId', auth, async (req, res) => {
             errorMessage = error.message;
             errorCode = 'INVALID_ENTRY_TYPE';
         }
-        
+
         res.status(400).json({
             success: false,
             error: errorMessage,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { useAuth } from '../contexts/AuthContext';
+
 import { useNotification } from '../contexts/NotificationContext';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
@@ -37,7 +37,6 @@ interface SampleEntry {
 }
 
 const LotSelection: React.FC = () => {
-  const { user } = useAuth();
   const { showNotification } = useNotification();
   const [entries, setEntries] = useState<SampleEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -47,7 +46,7 @@ const LotSelection: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const PAGE_SIZE = 50;
+  const PAGE_SIZE = 100;
 
   // Filters
   const [filtersVisible, setFiltersVisible] = useState(false);
@@ -58,6 +57,7 @@ const LotSelection: React.FC = () => {
   // Detail popup
   const [detailEntry, setDetailEntry] = useState<SampleEntry | null>(null);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadEntries();
   }, [page]);
@@ -219,44 +219,28 @@ const LotSelection: React.FC = () => {
         ) : (
           Object.entries(groupedEntries).map(([dateKey, brokerGroups]) => (
             <div key={dateKey} style={{ marginBottom: '16px' }}>
-              {/* Date Header */}
-              <div style={{
-                background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
-                color: 'white',
-                padding: '8px 12px',
-                fontWeight: '700',
-                fontSize: '14px',
-                letterSpacing: '0.5px',
-                textAlign: 'center'
-              }}>
-                📅 {dateKey}
-              </div>
               {Object.entries(brokerGroups).map(([brokerName, brokerEntries]) => (
                 <div key={brokerName}>
-                  {/* Broker Sub-Header */}
+                  {/* Merged Date + Broker Header */}
                   <div style={{
-                    backgroundColor: '#e8f4fd',
-                    padding: '6px 12px',
-                    fontWeight: '700',
-                    fontSize: '13px',
-                    color: '#2c3e50',
-                    borderBottom: '1px solid #bdd7ee',
-                    textAlign: 'center'
+                    background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+                    color: 'white', padding: '8px 12px', fontWeight: '700', fontSize: '13px',
+                    letterSpacing: '0.5px', textAlign: 'center'
                   }}>
-                    👤 {brokerName} ({brokerEntries.length})
+                    {dateKey} — {brokerName} ({brokerEntries.length})
                   </div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'auto' }}>
                     <thead>
                       <tr style={{ backgroundColor: '#4a90e2', color: 'white' }}>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', width: '40px' }}>SL</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Bags</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Pkg</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Variety</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Party</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Paddy Location</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Grains</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Image</th>
-                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px' }}>Sample Reports</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', width: '40px', whiteSpace: 'nowrap' }}>SL</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Bags</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Pkg</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Party</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Paddy Location</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Variety</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Grains</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Image</th>
+                        <th style={{ border: '1px solid #ddd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Sample Reports</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -266,15 +250,15 @@ const LotSelection: React.FC = () => {
                           <tr key={entry.id} style={{
                             backgroundColor: index % 2 === 0 ? '#f9f9f9' : 'white'
                           }}>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', fontWeight: '600' }}>{globalSlNo}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>{entry.bags}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>{entry.packaging || '75'} Kg</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>{entry.variety}</td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', cursor: 'pointer', color: '#2980b9', fontWeight: '600' }}
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>{globalSlNo}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.bags}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.packaging || '75'} Kg</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', cursor: 'pointer', color: '#2980b9', fontWeight: '600', whiteSpace: 'nowrap' }}
                               onClick={() => setDetailEntry(entry)}>
                               {entry.partyName}
                             </td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>{entry.location}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.location}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.variety}</td>
                             <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>
                               {entry.qualityParameters?.grainsCount || '-'}
                             </td>
@@ -380,63 +364,116 @@ const LotSelection: React.FC = () => {
             <div style={{ padding: '16px 20px' }}>
               {/* Staff Entry Section */}
               <h4 style={{ margin: '0 0 10px', fontSize: '13px', color: '#2c3e50', borderBottom: '2px solid #3498db', paddingBottom: '6px' }}>👤 Staff Entry Details</h4>
-              <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', marginBottom: '16px' }}>
-                <tbody>
-                  {[
-                    ['Date', new Date(detailEntry.entryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })],
-                    ['Broker Name', detailEntry.brokerName],
-                    ['Bags', detailEntry.bags],
-                    ['Packaging', `${detailEntry.packaging || '75'} Kg`],
-                    ['Variety', detailEntry.variety],
-                    ['Party Name', detailEntry.partyName],
-                    ['Paddy Location', detailEntry.location],
-                    ['Sample Collected By', (detailEntry as any).sampleCollectedBy || '-'],
-                    ['Lorry Number', (detailEntry as any).lorryNumber || '-'],
-                    ['Supervisor', (detailEntry as any).supervisorName || '-'],
-                  ].map(([label, value], i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '6px 8px', fontWeight: '600', color: '#555', width: '40%', background: i % 2 === 0 ? '#f8f9fa' : 'white' }}>{label}</td>
-                      <td style={{ padding: '6px 8px', color: '#333', background: i % 2 === 0 ? '#f8f9fa' : 'white' }}>{value || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '16px' }}>
+                {[
+                  ['Date', new Date(detailEntry.entryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })],
+                  ['Bags', detailEntry.bags],
+                  ['Packaging', `${detailEntry.packaging || '75'} Kg`],
+                  ['Party Name', detailEntry.partyName],
+                  ['Paddy Location', detailEntry.location],
+                  ['Lorry Number', (detailEntry as any).lorryNumber || '-'],
+                  ['Variety', detailEntry.variety],
+                  ['Sample Collected By', (detailEntry as any).sampleCollectedBy || '-'],
+                ].map(([label, value], i) => (
+                  <div key={i} style={{ background: '#f8f9fa', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e0e0e0' }}>
+                    <div style={{ fontSize: '10px', color: '#666', marginBottom: '2px', fontWeight: '600', textTransform: 'capitalize' }}>{label}</div>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#2c3e50' }}>{value || '-'}</div>
+                  </div>
+                ))}
+              </div>
 
               {/* Quality Parameters Section */}
               <h4 style={{ margin: '0 0 10px', fontSize: '13px', color: '#e67e22', borderBottom: '2px solid #e67e22', paddingBottom: '6px' }}>🔬 Quality Parameters</h4>
-              <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                <tbody>
-                  {[
-                    ['Moisture', detailEntry.qualityParameters?.moisture],
-                    ['Cutting', detailEntry.qualityParameters?.cutting1 && detailEntry.qualityParameters?.cutting2 ? `${detailEntry.qualityParameters.cutting1} x ${detailEntry.qualityParameters.cutting2}` : '-'],
-                    ['Bend', detailEntry.qualityParameters?.bend],
-                    ['Mix S', detailEntry.qualityParameters?.mixS],
-                    ['Mix L', detailEntry.qualityParameters?.mixL],
-                    ['Mix', detailEntry.qualityParameters?.mix],
-                    ['Kandu', detailEntry.qualityParameters?.kandu],
-                    ['Oil', detailEntry.qualityParameters?.oil],
-                    ['SK', detailEntry.qualityParameters?.sk],
-                    ['Grains Count', detailEntry.qualityParameters?.grainsCount],
-                    ['WB (R)', detailEntry.qualityParameters?.wbR],
-                    ['WB (BK)', detailEntry.qualityParameters?.wbBk],
-                    ['WB (T)', detailEntry.qualityParameters?.wbT],
-                    ['Paddy WB', detailEntry.qualityParameters?.paddyWb],
-                    ['Reported By', detailEntry.qualityParameters?.reportedBy],
-                  ].map(([label, value], i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '6px 8px', fontWeight: '600', color: '#555', width: '40%', background: i % 2 === 0 ? '#f8f9fa' : 'white' }}>{label}</td>
-                      <td style={{ padding: '6px 8px', color: '#333', background: i % 2 === 0 ? '#f8f9fa' : 'white' }}>{value || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {detailEntry.qualityParameters?.uploadFileUrl && (
-                <div style={{ marginTop: '12px', textAlign: 'center' }}>
-                  <a href={detailEntry.qualityParameters.uploadFileUrl} target="_blank" rel="noopener noreferrer">
-                    <img src={detailEntry.qualityParameters.uploadFileUrl} alt="Sample" style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '4px' }} />
-                  </a>
-                </div>
-              )}
+              {(() => {
+                const qp = detailEntry.qualityParameters;
+                const fmt = (v: any) => {
+                  if (v == null || v === '') return '-';
+                  const n = Number(v);
+                  if (isNaN(n)) return String(v);
+                  return n % 1 === 0 ? String(Math.round(n)) : n.toFixed(2);
+                };
+                const QItem = ({ label, value }: { label: string; value: string }) => (
+                  <div style={{ background: '#f8f9fa', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e0e0e0' }}>
+                    <div style={{ fontSize: '10px', color: '#666', marginBottom: '2px', fontWeight: '600', textTransform: 'capitalize' }}>{label}</div>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#2c3e50' }}>{value || '-'}</div>
+                  </div>
+                );
+                return qp ? (
+                  <div>
+                    {/* Row 1: Moisture, Cutting, Bend, Grains Count */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '8px' }}>
+                      <QItem label="Moisture" value={`${fmt(qp.moisture)}%`} />
+                      <QItem label="Cutting" value={qp.cutting1 && qp.cutting2 ? `${fmt(qp.cutting1)}×${fmt(qp.cutting2)}` : '-'} />
+                      <QItem label="Bend" value={fmt(qp.bend)} />
+                      <QItem label="Grains Count" value={fmt(qp.grainsCount)} />
+                    </div>
+                    {/* Row 2: S Mix, L Mix, Kandu, Oil */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '8px' }}>
+                      <QItem label="S Mix" value={fmt(qp.mixS || qp.mix)} />
+                      <QItem label="L Mix" value={fmt(qp.mixL)} />
+                      <QItem label="Kandu" value={fmt(qp.kandu)} />
+                      <QItem label="Oil" value={fmt(qp.oil)} />
+                    </div>
+                    {/* Row 3: SK, WB(R), WB(BK), WB(T) */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '8px' }}>
+                      <QItem label="SK" value={fmt(qp.sk)} />
+                      <QItem label="WB (R)" value={fmt(qp.wbR)} />
+                      <QItem label="WB (BK)" value={fmt(qp.wbBk)} />
+                      <QItem label="WB (T)" value={fmt(qp.wbT)} />
+                    </div>
+                    {/* Row 4: Paddy WB, Reported By */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                      <QItem label="Paddy WB" value={fmt(qp.paddyWb)} />
+                      <QItem label="Reported By" value={qp.reportedBy || '-'} />
+                    </div>
+                  </div>
+                ) : <div style={{ color: '#999', textAlign: 'center', padding: '12px' }}>No quality data available</div>;
+              })()}
+
+              {/* Final Price Details Section */}
+              {(() => {
+                const fp = (detailEntry as any).finalPriceData || (detailEntry as any).offering;
+                if (!fp?.finalPrice && !fp?.finalBaseRate) return null;
+                const unitLabel = (u: string) => u === 'per_bag' ? 'Per Bag' : u === 'per_quintal' ? 'Per Qtl' : u === 'per_ton' ? 'Per Ton' : '-';
+                return (
+                  <>
+                    <h4 style={{ margin: '16px 0 10px', fontSize: '13px', color: '#27ae60', borderBottom: '2px solid #27ae60', paddingBottom: '6px' }}>💰 Final Price Details</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '8px' }}>
+                      <div style={{ background: '#f0fdf4', padding: '8px 10px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                        <div style={{ fontSize: '10px', color: '#666', marginBottom: '2px', fontWeight: '600', textTransform: 'capitalize' as const }}>Final Rate</div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#166534' }}>₹{fp.finalPrice || fp.finalBaseRate || '-'} {(fp.baseRateType || '').replace(/_/g, '/')} {unitLabel(fp.baseRateUnit || 'per_bag')}</div>
+                      </div>
+                      <div style={{ background: '#f0fdf4', padding: '8px 10px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                        <div style={{ fontSize: '10px', color: '#666', marginBottom: '2px', fontWeight: '600', textTransform: 'capitalize' as const }}>Sute</div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#166534' }}>{fp.finalSute || fp.sute || '-'} {unitLabel(fp.finalSuteUnit || fp.suteUnit || 'per_bag')}</div>
+                      </div>
+                      <div style={{ background: '#f0fdf4', padding: '8px 10px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                        <div style={{ fontSize: '10px', color: '#666', marginBottom: '2px', fontWeight: '600', textTransform: 'capitalize' as const }}>Moisture</div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#166534' }}>{fp.moistureValue || '-'}%</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                      <div style={{ background: '#f0fdf4', padding: '8px 10px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                        <div style={{ fontSize: '10px', color: '#666', marginBottom: '2px', fontWeight: '600', textTransform: 'capitalize' as const }}>Hamali</div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#166534' }}>{fp.hamaliEnabled !== false ? (fp.hamali || fp.hamaliPerKg || '-') : 'No'} {fp.hamaliEnabled !== false ? unitLabel(fp.hamaliUnit || 'per_bag') : ''}</div>
+                      </div>
+                      <div style={{ background: '#f0fdf4', padding: '8px 10px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                        <div style={{ fontSize: '10px', color: '#666', marginBottom: '2px', fontWeight: '600', textTransform: 'capitalize' as const }}>Brokerage</div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#166534' }}>{fp.brokerageEnabled !== false ? (fp.brokerage || '-') : 'No'} {fp.brokerageEnabled !== false ? unitLabel(fp.brokerageUnit || 'per_bag') : ''}</div>
+                      </div>
+                      <div style={{ background: '#f0fdf4', padding: '8px 10px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                        <div style={{ fontSize: '10px', color: '#666', marginBottom: '2px', fontWeight: '600', textTransform: 'capitalize' as const }}>LF</div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#166534' }}>{fp.lfEnabled !== false ? (fp.lf || '-') : 'No'} {fp.lfEnabled !== false ? unitLabel(fp.lfUnit || 'per_bag') : ''}</div>
+                      </div>
+                      <div style={{ background: '#f0fdf4', padding: '8px 10px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>
+                        <div style={{ fontSize: '10px', color: '#666', marginBottom: '2px', fontWeight: '600', textTransform: 'capitalize' as const }}>EGB</div>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#166534' }}>{fp.egbValue || '-'}</div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+
               <button onClick={() => setDetailEntry(null)}
                 style={{ marginTop: '16px', width: '100%', padding: '8px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
                 Close

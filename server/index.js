@@ -39,7 +39,7 @@ const sampleEntriesRoutes = require('./routes/sample-entries');
 
 const compression = require('compression');
 const performanceMonitor = require('./middleware/performanceMonitor');
-const { queryTimingMiddleware } = require('./middleware/querySafety');
+// queryTimingMiddleware removed — duplicates performanceMonitor
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -47,8 +47,7 @@ const PORT = process.env.PORT || 5000;
 // Performance monitoring (tracks response times)
 app.use(performanceMonitor);
 
-// Query timing warnings for slow requests (10 lakh record safety)
-app.use(queryTimingMiddleware);
+// queryTimingMiddleware removed — was duplicating performanceMonitor
 
 // Performance: Enable gzip compression
 app.use(compression({
@@ -84,14 +83,18 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    // In production, block requests with no origin (prevents some CSRF attacks)
+    if (!origin) {
+      if (process.env.NODE_ENV === 'production') {
+        return callback(new Error('CORS: No origin header'));
+      }
+      return callback(null, true);
+    }
 
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
       console.log('❌ CORS blocked origin:', origin);
-      console.log('✅ Allowed origins:', allowedOrigins);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -100,16 +103,37 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma']
 }));
 
-// Rate limiting - Increased for development
+// Rate limiting - General API protection
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10000 // limit each IP to 10000 requests per windowMs (increased for development)
+  max: process.env.NODE_ENV === 'development' ? 5000 : 200, // Strict in production
+  message: { error: 'Too many requests. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false
 });
 app.use(limiter);
+
+// Strict rate limiter for auth endpoints (prevent brute force)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'development' ? 100 : 10, // 10 login attempts per 15 min in production
+  message: { error: 'Too many login attempts. Please try again after 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use('/api/auth/login', authLimiter);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Input sanitization — strips HTML/XSS from all incoming data
+const { sanitizeRequest } = require('./middleware/validateRequest');
+app.use(sanitizeRequest);
+
+// Structured request logging — logs every HTTP request with timing
+const logger = require('./utils/logger');
+app.use(logger.requestLogger);
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -148,22 +172,17 @@ app.use('/api/unified-varieties', unifiedVarietiesRoutes);
 app.use('/api/sample-entries', sampleEntriesRoutes);
 
 
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const path = require('path');
+const { auth, authorize } = require('./middleware/auth');
 
-// Seeding route for environments without shell access (Render Free Tier)
-app.get('/api/admin/seed-render', (req, res) => {
-  const { key } = req.query;
-  const SECRET_KEY = 'render_seed_2026';
-
-  if (key !== SECRET_KEY) {
-    return res.status(403).json({ error: 'Unauthorized: Invalid seeding key' });
-  }
-
-  console.log('🌱 Remote seeding triggered via API...');
+// Seeding route — requires admin JWT authentication (no hardcoded keys)
+app.get('/api/admin/seed-render', auth, authorize('admin'), (req, res) => {
+  console.log(`🌱 Remote seeding triggered by admin: ${req.user.username}`);
   const seederPath = path.join(__dirname, 'seeders', 'render-lightweight-seeder.js');
 
-  exec(`node "${seederPath}"`, (error, stdout, stderr) => {
+  // Use execFile (not exec) to prevent command injection
+  execFile('node', [seederPath], (error, stdout, stderr) => {
     if (error) {
       console.error(`❌ Seeding Error: ${error.message}`);
       return;
@@ -174,7 +193,7 @@ app.get('/api/admin/seed-render', (req, res) => {
   res.json({
     message: 'Seeding process started in the background.',
     target: '25,000 records',
-    environment: 'Render'
+    triggeredBy: req.user.username
   });
 });
 
@@ -1366,6 +1385,15 @@ const startServer = async () => {
       await require('./seeders/createDefaultUsers')();
     } catch (error) {
       console.log('⚠️ Default users creation warning:', error.message);
+    }
+
+    // AUTO-APPLY critical database indexes for 30 lakh record performance
+    // Safe to run on every startup — uses IF NOT EXISTS
+    try {
+      const addCriticalIndexes = require('./scripts/add-critical-indexes');
+      await addCriticalIndexes();
+    } catch (error) {
+      console.log('⚠️ Index creation warning:', error.message);
     }
 
     // Use the isVercel variable defined earlier

@@ -23,7 +23,7 @@ const CompletedLots: React.FC = () => {
     const [page, setPage] = useState(1);
     const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState({ broker: '', variety: '', party: '', location: '', startDate: '', endDate: '' });
-    const pageSize = 50;
+    const pageSize = 100;
 
     const fetchEntries = useCallback(async () => {
         setLoading(true);

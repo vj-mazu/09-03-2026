@@ -1,7 +1,7 @@
 const express = require('express');
 const { Op } = require('sequelize');
 const PDFDocument = require('pdfkit');
-const { auth } = require('../middleware/auth');
+const { auth, authorize } = require('../middleware/auth');
 const Arrival = require('../models/Arrival');
 const { Kunchinittu } = require('../models/Location');
 const User = require('../models/User');

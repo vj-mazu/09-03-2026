@@ -60,18 +60,21 @@ const AllottedSupervisors: React.FC = () => {
   const [expandedEntries, setExpandedEntries] = useState<{ [key: string]: boolean }>({});
   const [closingEntryId, setClosingEntryId] = useState<string | null>(null);
   const [closeLotReason, setCloseLotReason] = useState('');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [offeringCache, setOfferingCache] = useState<{ [key: string]: any }>({});
+  const [editingInspection, setEditingInspection] = useState<{ entryId: string; inspectionId: string; data: any } | null>(null);
+  const [editValuesEntry, setEditValuesEntry] = useState<SampleEntry | null>(null);
+  const [editValuesData, setEditValuesData] = useState<any>({});
+  const [isSavingValues, setIsSavingValues] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(20);
-  const [totalEntries, setTotalEntries] = useState(0);
 
-  // Filter options (for dropdowns)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [brokerOptions, setBrokerOptions] = useState<string[]>([]);
-  const [varietyOptions, setVarietyOptions] = useState<string[]>([]);
-
-  // Filters
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [varietyOptions, setVarietyOptions] = useState<string[]>([]);  // Filters
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: '',
@@ -81,27 +84,14 @@ const AllottedSupervisors: React.FC = () => {
     status: ''
   });
 
-  const handleFilterChange = (key: string, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
-    setCurrentPage(1); // Reset to first page on filter change
-  };
 
-  const clearFilters = () => {
-    setFilters({
-      startDate: '',
-      endDate: '',
-      broker: '',
-      variety: '',
-      party: '',
-      status: ''
-    });
-    setCurrentPage(1);
-  };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadSupervisors();
   }, []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadEntries();
   }, [currentPage, filters]);
@@ -365,148 +355,116 @@ const AllottedSupervisors: React.FC = () => {
     return '#2196F3';
   };
 
+  const handleEditInspection = (entryId: string, inspection: PreviousInspection) => {
+    const cuttingText = inspection.cutting2 ? `${inspection.cutting1}x${inspection.cutting2}` : (inspection.cutting1?.toString() || '');
+    setEditingInspection({
+      entryId,
+      inspectionId: inspection.id,
+      data: {
+        lorryNumber: inspection.lorryNumber || '',
+        bags: inspection.bags?.toString() || '',
+        cutting: cuttingText,
+        bend: inspection.bend?.toString() || '',
+        remarks: ''
+      }
+    });
+  };
+
+  const handleOpenEditValues = (entry: SampleEntry) => {
+    const o = offeringCache[entry.id] || {};
+    setEditValuesEntry(entry);
+    setEditValuesData({
+      finalBaseRate: o.finalBaseRate?.toString() ?? o.offerBaseRateValue?.toString() ?? '',
+      baseRateType: o.baseRateType || 'PD_LOOSE',
+      sute: o.finalSute?.toString() ?? o.sute?.toString() ?? '',
+      suteUnit: o.finalSuteUnit || o.suteUnit || 'per_bag',
+      moistureValue: o.moistureValue?.toString() ?? '',
+      hamali: o.hamali?.toString() ?? '',
+      hamaliUnit: o.hamaliUnit || 'per_bag',
+      brokerage: o.brokerage?.toString() ?? '',
+      brokerageUnit: o.brokerageUnit || 'per_bag',
+      lf: o.lf?.toString() ?? '',
+      lfUnit: o.lfUnit || 'per_bag',
+      egbValue: o.egbValue?.toString() ?? '',
+      egbType: o.egbType || ((o.egbValue && parseFloat(o.egbValue) > 0) ? 'purchase' : 'mill')
+    });
+  };
+
+  const handleSaveEditValues = async () => {
+    if (!editValuesEntry || isSavingValues) return;
+    try {
+      setIsSavingValues(true);
+      const token = localStorage.getItem('token');
+      await axios.post(
+        `${API_URL}/sample-entries/${editValuesEntry.id}/final-price`,
+        { ...editValuesData, isFinalized: true },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      showNotification('Values updated successfully', 'success');
+      setEditValuesEntry(null);
+      loadEntries();
+    } catch (error: any) {
+      showNotification(error.response?.data?.error || 'Failed to save values', 'error');
+    } finally {
+      setIsSavingValues(false);
+    }
+  };
+
+  const handleSaveInspection = async () => {
+    if (!editingInspection) return;
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put(
+        `${API_URL}/sample-entries/${editingInspection.entryId}/physical-inspection/${editingInspection.inspectionId}`,
+        {
+          lorryNumber: editingInspection.data.lorryNumber,
+          bags: editingInspection.data.bags ? parseInt(editingInspection.data.bags) : undefined,
+          cutting1: (() => { const parts = (editingInspection.data.cutting || '').split(/[xX×]/); return parseFloat(parts[0]?.trim()) || undefined; })(),
+          cutting2: (() => { const parts = (editingInspection.data.cutting || '').split(/[xX×]/); return parts.length > 1 ? (parseFloat(parts[1]?.trim()) || 0) : 0; })(),
+          bend: (() => { const parts = (editingInspection.data.bend || '').split(/[xX×]/); return parseFloat(parts[0]?.trim()) || undefined; })(),
+          remarks: editingInspection.data.remarks || undefined
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      showNotification('Inspection updated successfully', 'success');
+      setEditingInspection(null);
+      await loadInspectionProgress(editingInspection.entryId);
+    } catch (error: any) {
+      showNotification(error.response?.data?.error || 'Failed to update inspection', 'error');
+    }
+  };
+
   return (
     <div>
-      {/* Filters Section */}
-      <div style={{
-        padding: '15px',
-        backgroundColor: '#f8fafc',
-        border: '1px solid #e2e8f0',
-        borderRadius: '8px',
-        marginBottom: '15px'
-      }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '10px'
-        }}>
-          <h3 style={{ margin: 0, fontSize: '14px', color: '#333' }}>🔍 Filters</h3>
-          <button
-            onClick={clearFilters}
-            style={{
-              padding: '4px 12px',
-              fontSize: '11px',
-              backgroundColor: '#e2e8f0',
-              color: '#666',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            Clear All
-          </button>
-        </div>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(6, 1fr)',
-          gap: '10px',
-          alignItems: 'end'
-        }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px', color: '#666' }}>From Date</label>
-            <input
-              type="date"
-              value={filters.startDate}
-              onChange={(e) => handleFilterChange('startDate', e.target.value)}
-              style={{ width: '100%', padding: '6px', fontSize: '11px', border: '1px solid #ddd', borderRadius: '4px' }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px', color: '#666' }}>To Date</label>
-            <input
-              type="date"
-              value={filters.endDate}
-              onChange={(e) => handleFilterChange('endDate', e.target.value)}
-              style={{ width: '100%', padding: '6px', fontSize: '11px', border: '1px solid #ddd', borderRadius: '4px' }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px', color: '#666' }}>Broker</label>
-            <select
-              value={filters.broker}
-              onChange={(e) => handleFilterChange('broker', e.target.value)}
-              style={{ width: '100%', padding: '6px', fontSize: '11px', border: '1px solid #ddd', borderRadius: '4px' }}
-            >
-              <option value="">All Brokers</option>
-              {brokerOptions.map(broker => (
-                <option key={broker} value={broker}>{broker}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px', color: '#666' }}>Variety</label>
-            <select
-              value={filters.variety}
-              onChange={(e) => handleFilterChange('variety', e.target.value)}
-              style={{ width: '100%', padding: '6px', fontSize: '11px', border: '1px solid #ddd', borderRadius: '4px' }}
-            >
-              <option value="">All Varieties</option>
-              {varietyOptions.map(variety => (
-                <option key={variety} value={variety}>{variety}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px', color: '#666' }}>Party</label>
-            <input
-              type="text"
-              placeholder="Search party..."
-              value={filters.party}
-              onChange={(e) => handleFilterChange('party', e.target.value)}
-              style={{ width: '100%', padding: '6px', fontSize: '11px', border: '1px solid #ddd', borderRadius: '4px' }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '11px', marginBottom: '4px', color: '#666' }}>Status</label>
-            <select
-              value={filters.status}
-              onChange={(e) => handleFilterChange('status', e.target.value)}
-              style={{ width: '100%', padding: '6px', fontSize: '11px', border: '1px solid #ddd', borderRadius: '4px' }}
-            >
-              <option value="">All Status</option>
-              <option value="LOT_ALLOTMENT">Lot Allotment</option>
-              <option value="PHYSICAL_INSPECTION">Physical Inspection</option>
-              <option value="INVENTORY_ENTRY">Inventory Entry</option>
-              <option value="OWNER_FINANCIAL">Owner Financial</option>
-              <option value="MANAGER_FINANCIAL">Manager Financial</option>
-              <option value="FINAL_REVIEW">Final Review</option>
-              <option value="COMPLETED">Completed</option>
-            </select>
-          </div>
-        </div>
-      </div>
+      {/* Filters hidden */}
 
       <div style={{
         overflowX: 'auto',
         backgroundColor: 'white',
         border: '1px solid #ddd'
       }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'fixed' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'auto' }}>
           <thead>
             <tr style={{ backgroundColor: '#4a90e2', color: 'white' }}>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'left', width: '70px' }}>Date</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'left', width: '70px' }}>Broker</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'left', width: '70px' }}>Variety</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'left', width: '90px' }}>Party</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'left', width: '70px' }}>Location</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', width: '60px' }}>Hamali</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', width: '60px' }}>Bkrg</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', width: '50px' }}>LF</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'right', width: '60px' }}>Allotted</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'right', width: '60px' }}>Inspected</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'right', width: '60px' }}>Remaining</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', width: '100px' }}>Progress</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', width: '80px' }}>Supervisor</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', width: '80px' }}>Change To</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', width: '100px' }}>Actions</th>
+              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Date</th>
+              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Broker</th>
+              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Variety</th>
+              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Party</th>
+              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Location</th>
+              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'right', whiteSpace: 'nowrap' }}>Allotted</th>
+              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'right', whiteSpace: 'nowrap' }}>Loading</th>
+              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'right', whiteSpace: 'nowrap' }}>Balance</th>
+              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap' }}>Progress</th>
+              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap' }}>Supervisor</th>
+              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap' }}>Change To</th>
+              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={15} style={{ textAlign: 'center', padding: '20px', color: '#666' }}>Loading...</td></tr>
+              <tr><td colSpan={12} style={{ textAlign: 'center', padding: '20px', color: '#666' }}>Loading...</td></tr>
             ) : entries.length === 0 ? (
-              <tr><td colSpan={15} style={{ textAlign: 'center', padding: '20px', color: '#999' }}>No allotted supervisors found</td></tr>
+              <tr><td colSpan={12} style={{ textAlign: 'center', padding: '20px', color: '#999' }}>No allotted supervisors found</td></tr>
             ) : (
               entries.map((entry, index) => {
                 const currentSupervisor = entry.lotAllotment?.supervisor;
@@ -544,35 +502,16 @@ const AllottedSupervisors: React.FC = () => {
                     <tr style={{
                       backgroundColor: index % 2 === 0 ? '#f9f9f9' : 'white'
                     }}>
-                      <td style={{ border: '1px solid #ddd', padding: '6px', fontSize: '11px', textAlign: 'left' }}>
+                      <td style={{ border: '1px solid #ddd', padding: '6px', fontSize: '11px', whiteSpace: 'nowrap' }}>
                         {entry.entryDate ? (() => {
                           const date = new Date(entry.entryDate);
                           return isNaN(date.getTime()) ? 'Invalid Date' : date.toLocaleDateString();
                         })() : 'No Date'}
                       </td>
-                      <td style={{ border: '1px solid #ddd', padding: '6px', fontSize: '11px', textAlign: 'left' }}>{entry.brokerName}</td>
-                      <td style={{ border: '1px solid #ddd', padding: '6px', fontSize: '11px', textAlign: 'left' }}>{entry.variety}</td>
-                      <td style={{ border: '1px solid #ddd', padding: '6px', fontSize: '11px', textAlign: 'left' }}>{entry.partyName}</td>
-                      <td style={{ border: '1px solid #ddd', padding: '6px', fontSize: '11px', textAlign: 'left' }}>{entry.location}</td>
-                      {/* Financial details columns */}
-                      {(() => {
-                        const o = offeringCache[entry.id];
-                        const missing = { color: '#e74c3c', fontWeight: '600', fontSize: '10px' };
-                        const set = { fontSize: '11px' };
-                        return (
-                          <>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>
-                              {o?.hamaliPerKg || o?.hamali ? <span style={set}>{o.hamaliPerKg || o.hamali}</span> : <span style={missing}>⚠️</span>}
-                            </td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>
-                              {o?.brokerage ? <span style={set}>{o.brokerage}</span> : <span style={missing}>⚠️</span>}
-                            </td>
-                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>
-                              {o?.lf ? <span style={set}>{o.lf}</span> : <span style={missing}>⚠️</span>}
-                            </td>
-                          </>
-                        );
-                      })()}
+                      <td style={{ border: '1px solid #ddd', padding: '6px', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.brokerName}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '6px', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.variety}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '6px', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.partyName}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '6px', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.location}</td>
                       <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#10b981' }}>
                         {entry.lotAllotment?.allottedBags || entry.bags}
                       </td>
@@ -665,6 +604,22 @@ const AllottedSupervisors: React.FC = () => {
                       <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '4px', flexDirection: 'column', alignItems: 'center' }}>
                           <button
+                            onClick={() => handleOpenEditValues(entry)}
+                            style={{
+                              fontSize: '10px',
+                              padding: '4px 8px',
+                              backgroundColor: '#3498db',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '3px',
+                              cursor: 'pointer',
+                              width: '100%',
+                              marginBottom: '3px'
+                            }}
+                          >
+                            ✏️ Edit Values
+                          </button>
+                          <button
                             onClick={() => handleReassign(entry.id)}
                             disabled={!hasChanged}
                             style={{
@@ -752,11 +707,12 @@ const AllottedSupervisors: React.FC = () => {
                               <tr style={{ backgroundColor: '#e3f2fd' }}>
                                 <th style={{ border: '1px solid #ddd', padding: '4px' }}>#</th>
                                 <th style={{ border: '1px solid #ddd', padding: '4px' }}>Date</th>
-                                <th style={{ border: '1px solid #ddd', padding: '4px' }}>Lorry Number</th>
+                                <th style={{ border: '1px solid #ddd', padding: '4px' }}>Lorry No</th>
                                 <th style={{ border: '1px solid #ddd', padding: '4px' }}>Bags</th>
                                 <th style={{ border: '1px solid #ddd', padding: '4px' }}>Cutting</th>
                                 <th style={{ border: '1px solid #ddd', padding: '4px' }}>Bend</th>
-                                <th style={{ border: '1px solid #ddd', padding: '4px' }}>Inspected By</th>
+                                <th style={{ border: '1px solid #ddd', padding: '4px' }}>By</th>
+                                <th style={{ border: '1px solid #ddd', padding: '4px' }}>Actions</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -766,15 +722,61 @@ const AllottedSupervisors: React.FC = () => {
                                   <td style={{ border: '1px solid #ddd', padding: '4px' }}>
                                     {new Date(inspection.inspectionDate).toLocaleDateString()}
                                   </td>
-                                  <td style={{ border: '1px solid #ddd', padding: '4px' }}>{inspection.lorryNumber}</td>
-                                  <td style={{ border: '1px solid #ddd', padding: '4px', textAlign: 'right', fontWeight: '600' }}>
-                                    {inspection.bags}
-                                  </td>
-                                  <td style={{ border: '1px solid #ddd', padding: '4px', textAlign: 'right' }}>
-                                    {inspection.cutting1} x {inspection.cutting2}
-                                  </td>
-                                  <td style={{ border: '1px solid #ddd', padding: '4px', textAlign: 'right' }}>{inspection.bend}</td>
-                                  <td style={{ border: '1px solid #ddd', padding: '4px' }}>{inspection.reportedBy?.username || '-'}</td>
+                                  {editingInspection && editingInspection.inspectionId === inspection.id ? (
+                                    <>
+                                      <td style={{ border: '1px solid #ddd', padding: '3px' }}>
+                                        <input type="text" value={editingInspection.data.lorryNumber}
+                                          onChange={e => setEditingInspection({ ...editingInspection, data: { ...editingInspection.data, lorryNumber: e.target.value } })}
+                                          style={{ width: '50px', padding: '2px 4px', fontSize: '10px', border: '1px solid #3498db', borderRadius: '3px' }} />
+                                      </td>
+                                      <td style={{ border: '1px solid #ddd', padding: '3px' }}>
+                                        <input type="number" value={editingInspection.data.bags}
+                                          onChange={e => setEditingInspection({ ...editingInspection, data: { ...editingInspection.data, bags: e.target.value } })}
+                                          style={{ width: '50px', padding: '2px 4px', fontSize: '10px', border: '1px solid #3498db', borderRadius: '3px' }} />
+                                      </td>
+                                      <td style={{ border: '1px solid #ddd', padding: '3px' }}>
+                                        <input type="text" value={editingInspection.data.cutting}
+                                          onChange={e => setEditingInspection({ ...editingInspection, data: { ...editingInspection.data, cutting: e.target.value } })}
+                                          placeholder="e.g. 12x20"
+                                          style={{ width: '70px', padding: '2px 4px', fontSize: '10px', border: '1px solid #3498db', borderRadius: '3px' }} />
+                                      </td>
+                                      <td style={{ border: '1px solid #ddd', padding: '3px' }}>
+                                        <input type="text" value={editingInspection.data.bend}
+                                          onChange={e => setEditingInspection({ ...editingInspection, data: { ...editingInspection.data, bend: e.target.value } })}
+                                          placeholder="e.g. 32"
+                                          style={{ width: '50px', padding: '2px 4px', fontSize: '10px', border: '1px solid #3498db', borderRadius: '3px' }} />
+                                      </td>
+                                      <td style={{ border: '1px solid #ddd', padding: '3px', fontSize: '10px' }}>{inspection.reportedBy?.username || '-'}</td>
+                                      <td style={{ border: '1px solid #ddd', padding: '3px' }}>
+                                        <div style={{ display: 'flex', gap: '3px' }}>
+                                          <button onClick={handleSaveInspection}
+                                            style={{ padding: '2px 6px', fontSize: '9px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>💾 Save</button>
+                                          <button onClick={() => setEditingInspection(null)}
+                                            style={{ padding: '2px 6px', fontSize: '9px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>✖</button>
+                                        </div>
+                                      </td>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{inspection.lorryNumber}</td>
+                                      <td style={{ border: '1px solid #ddd', padding: '4px', textAlign: 'right', fontWeight: '600' }}>
+                                        {inspection.bags}
+                                      </td>
+                                      <td style={{ border: '1px solid #ddd', padding: '4px', textAlign: 'right' }}>
+                                        {inspection.cutting1} × {inspection.cutting2}
+                                      </td>
+                                      <td style={{ border: '1px solid #ddd', padding: '4px', textAlign: 'right' }}>{inspection.bend}</td>
+                                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{inspection.reportedBy?.username || '-'}</td>
+                                      <td style={{ border: '1px solid #ddd', padding: '4px', textAlign: 'center' }}>
+                                        <div style={{ display: 'flex', gap: '3px', flexDirection: 'column', alignItems: 'center' }}>
+                                          <button onClick={() => handleEditInspection(entry.id, inspection)}
+                                            style={{ padding: '2px 8px', fontSize: '9px', backgroundColor: '#3498db', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontWeight: '600', width: '100%' }}>✏️ Edit</button>
+                                          <button onClick={() => handleOpenEditValues(entry)}
+                                            style={{ padding: '2px 8px', fontSize: '9px', backgroundColor: '#27ae60', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontWeight: '600', width: '100%' }}>💰 Edit Final</button>
+                                        </div>
+                                      </td>
+                                    </>
+                                  )}
                                 </tr>
                               ))}
                             </tbody>
@@ -789,6 +791,125 @@ const AllottedSupervisors: React.FC = () => {
           </tbody>
         </table>
       </div>
+      {/* Edit Values Modal */}
+      {editValuesEntry && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div style={{ backgroundColor: 'white', padding: '16px', borderRadius: '10px', width: '90%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <h3 style={{ marginTop: 0, color: '#2c3e50', borderBottom: '2px solid #3498db', paddingBottom: '8px', fontSize: '14px' }}>
+              ✏️ Edit Values — {editValuesEntry.brokerName} / {editValuesEntry.partyName}
+            </h3>
+            <div style={{ background: '#f8f9fa', padding: '6px 10px', borderRadius: '4px', marginBottom: '10px', fontSize: '11px', textAlign: 'center' }}>
+              Bags: <b>{editValuesEntry.bags}</b> | Variety: <b>{editValuesEntry.variety}</b> | Location: <b>{editValuesEntry.location}</b>
+            </div>
+            {/* Form fields */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
+              <div>
+                <label style={{ fontSize: '10px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>Final Base Rate</label>
+                <input type="number" step="0.01" value={editValuesData.finalBaseRate}
+                  onChange={e => setEditValuesData({ ...editValuesData, finalBaseRate: e.target.value })}
+                  style={{ width: '100%', padding: '4px 6px', fontSize: '11px', border: '1px solid #3498db', borderRadius: '3px', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '10px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>Base Rate Type</label>
+                <select value={editValuesData.baseRateType} onChange={e => setEditValuesData({ ...editValuesData, baseRateType: e.target.value })}
+                  style={{ width: '100%', padding: '4px 6px', fontSize: '11px', border: '1px solid #3498db', borderRadius: '3px', boxSizing: 'border-box' }}>
+                  <option value="PD_LOOSE">PD/Loose</option>
+                  <option value="PD_WB">PD/WB</option>
+                  <option value="MD_WB">MD/WB</option>
+                  <option value="MD_LOOSE">MD/Loose</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
+              <div>
+                <label style={{ fontSize: '10px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>Sute</label>
+                <div style={{ display: 'flex', gap: '3px' }}>
+                  <input type="number" step="0.01" value={editValuesData.sute}
+                    onChange={e => setEditValuesData({ ...editValuesData, sute: e.target.value })}
+                    style={{ flex: 1, padding: '4px 6px', fontSize: '11px', border: '1px solid #3498db', borderRadius: '3px', minWidth: 0 }} />
+                  <select value={editValuesData.suteUnit} onChange={e => setEditValuesData({ ...editValuesData, suteUnit: e.target.value })}
+                    style={{ padding: '4px', fontSize: '10px', border: '1px solid #3498db', borderRadius: '3px', minWidth: '55px' }}>
+                    <option value="per_bag">/Bag</option>
+                    <option value="per_ton">/Ton</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '10px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>Moisture %</label>
+                <input type="number" step="0.01" value={editValuesData.moistureValue}
+                  onChange={e => setEditValuesData({ ...editValuesData, moistureValue: e.target.value })}
+                  style={{ width: '100%', padding: '4px 6px', fontSize: '11px', border: '1px solid #3498db', borderRadius: '3px', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginBottom: '6px' }}>
+              <div>
+                <label style={{ fontSize: '10px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>Hamali</label>
+                <div style={{ display: 'flex', gap: '3px' }}>
+                  <input type="number" step="0.01" value={editValuesData.hamali}
+                    onChange={e => setEditValuesData({ ...editValuesData, hamali: e.target.value })}
+                    style={{ flex: 1, padding: '4px 6px', fontSize: '11px', border: '1px solid #3498db', borderRadius: '3px', minWidth: 0 }} />
+                  <select value={editValuesData.hamaliUnit} onChange={e => setEditValuesData({ ...editValuesData, hamaliUnit: e.target.value })}
+                    style={{ padding: '4px', fontSize: '10px', border: '1px solid #3498db', borderRadius: '3px', minWidth: '50px' }}>
+                    <option value="per_bag">/Bag</option>
+                    <option value="per_quintal">/Qtl</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '10px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>Brokerage</label>
+                <div style={{ display: 'flex', gap: '3px' }}>
+                  <input type="number" step="0.01" value={editValuesData.brokerage}
+                    onChange={e => setEditValuesData({ ...editValuesData, brokerage: e.target.value })}
+                    style={{ flex: 1, padding: '4px 6px', fontSize: '11px', border: '1px solid #3498db', borderRadius: '3px', minWidth: 0 }} />
+                  <select value={editValuesData.brokerageUnit} onChange={e => setEditValuesData({ ...editValuesData, brokerageUnit: e.target.value })}
+                    style={{ padding: '4px', fontSize: '10px', border: '1px solid #3498db', borderRadius: '3px', minWidth: '50px' }}>
+                    <option value="per_bag">/Bag</option>
+                    <option value="per_quintal">/Qtl</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '10px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>LF</label>
+                <div style={{ display: 'flex', gap: '3px' }}>
+                  <input type="number" step="0.01" value={editValuesData.lf}
+                    onChange={e => setEditValuesData({ ...editValuesData, lf: e.target.value })}
+                    style={{ flex: 1, padding: '4px 6px', fontSize: '11px', border: '1px solid #3498db', borderRadius: '3px', minWidth: 0 }} />
+                  <select value={editValuesData.lfUnit} onChange={e => setEditValuesData({ ...editValuesData, lfUnit: e.target.value })}
+                    style={{ padding: '4px', fontSize: '10px', border: '1px solid #3498db', borderRadius: '3px', minWidth: '50px' }}>
+                    <option value="per_bag">/Bag</option>
+                    <option value="per_quintal">/Qtl</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{ fontSize: '10px', fontWeight: 700, display: 'block', marginBottom: '2px' }}>EGB</label>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px', cursor: 'pointer' }}>
+                  <input type="radio" value="mill" checked={editValuesData.egbType === 'mill'}
+                    onChange={() => setEditValuesData({ ...editValuesData, egbType: 'mill', egbValue: '0' })} /> Mill
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '11px', cursor: 'pointer' }}>
+                  <input type="radio" value="purchase" checked={editValuesData.egbType === 'purchase'}
+                    onChange={() => setEditValuesData({ ...editValuesData, egbType: 'purchase' })} /> Purchase
+                </label>
+                <input type="number" step="0.01" value={editValuesData.egbValue}
+                  onChange={e => setEditValuesData({ ...editValuesData, egbValue: e.target.value })}
+                  disabled={editValuesData.egbType === 'mill'}
+                  style={{ flex: 1, padding: '4px 6px', fontSize: '11px', border: `1px solid ${editValuesData.egbType === 'mill' ? '#ccc' : '#3498db'}`, borderRadius: '3px', backgroundColor: editValuesData.egbType === 'mill' ? '#f5f5f5' : 'white', minWidth: 0 }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid #eee', paddingTop: '10px' }}>
+              <button onClick={() => setEditValuesEntry(null)} disabled={isSavingValues}
+                style={{ padding: '6px 14px', border: '1px solid #ddd', borderRadius: '4px', background: 'white', cursor: 'pointer', fontSize: '12px' }}>Cancel</button>
+              <button onClick={handleSaveEditValues} disabled={isSavingValues}
+                style={{ padding: '6px 18px', border: 'none', borderRadius: '4px', background: isSavingValues ? '#95a5a6' : '#27ae60', color: 'white', fontWeight: 700, cursor: isSavingValues ? 'not-allowed' : 'pointer', fontSize: '12px' }}>
+                {isSavingValues ? 'Saving...' : '💾 Save Values'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

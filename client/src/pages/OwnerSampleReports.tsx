@@ -16,16 +16,16 @@ interface TabConfig {
 }
 
 const tabs: TabConfig[] = [
+  { key: 'sample-book', label: 'Sample Book', icon: '📖', color: '#8e44ad' },
   { key: 'pending-lots', label: 'Pending (Sample Selection)', icon: '📋', color: '#3498db' },
   { key: 'cooking-report', label: 'Cooking Report', icon: '🍚', color: '#e67e22' },
   { key: 'lots-passed', label: 'Final Pass Lots', icon: '✅', color: '#27ae60' },
   { key: 'loading-lots', label: 'Loading Lots', icon: '🚚', color: '#f39c12' },
   { key: 'completed-lots', label: 'Completed Lots', icon: '📦', color: '#e74c3c' },
-  { key: 'sample-book', label: 'Sample Book', icon: '📖', color: '#8e44ad' },
 ];
 
 const OwnerSampleReports: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabKey>('pending-lots');
+  const [activeTab, setActiveTab] = useState<TabKey>('sample-book');
 
   useEffect(() => {
     document.title = 'Sample Reports - Kushi Agro Foods';
@@ -98,7 +98,7 @@ const OwnerSampleReports: React.FC = () => {
 
       {/* Tab Content */}
       <div style={{
-        padding: '16px 20px',
+        padding: '16px 0',
         width: '100%',
         boxSizing: 'border-box'
       }}>

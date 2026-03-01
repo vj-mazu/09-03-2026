@@ -42,10 +42,11 @@ const AssigningSupervisor: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const pageSize = 50;
+  const pageSize = 100;
 
   // Removed fallback modal state - handled in Loading Lots tab now
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadEntries();
     loadSupervisors();
@@ -189,119 +190,122 @@ const AssigningSupervisor: React.FC = () => {
     }
   };
 
+  // Group entries by date + broker
+  const groupedEntries: Record<string, Record<string, SampleEntry[]>> = {};
+  entries.forEach(entry => {
+    const dateKey = entry.entryDate
+      ? new Date(entry.entryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      : 'No Date';
+    const brokerKey = entry.brokerName || 'Unknown';
+    if (!groupedEntries[dateKey]) groupedEntries[dateKey] = {};
+    if (!groupedEntries[dateKey][brokerKey]) groupedEntries[dateKey][brokerKey] = [];
+    groupedEntries[dateKey][brokerKey].push(entry);
+  });
+
   return (
     <div>
-      <div style={{
-        overflowX: 'auto',
-        backgroundColor: 'white',
-        border: '1px solid #ddd'
-      }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'fixed' }}>
-          <thead>
-            <tr style={{ backgroundColor: '#4a90e2', color: 'white' }}>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', width: '70px' }}>Date</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', width: '70px' }}>Broker</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', width: '70px' }}>Variety</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', width: '90px' }}>Party</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', width: '70px' }}>Location</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'right', width: '50px' }}>Bags</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', width: '60px' }}>Hamali</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', width: '60px' }}>Bkrg</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', textAlign: 'center', width: '50px' }}>LF</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', width: '100px' }}>Select Supervisor</th>
-              <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', width: '80px' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={12} style={{ textAlign: 'center', padding: '20px', color: '#666' }}>Loading...</td></tr>
-            ) : entries.length === 0 ? (
-              <tr><td colSpan={12} style={{ textAlign: 'center', padding: '20px', color: '#999' }}>No entries pending supervisor assignment</td></tr>
-            ) : (
-              entries.map((entry, index) => {
-                const o = offeringCache[entry.id] || {};
-                const missing = { color: '#e74c3c', fontWeight: '600' as const, fontSize: '10px' };
-                const set = { fontSize: '11px' };
-
-                const needsFill = (o.suteEnabled === false && !parseFloat(o.finalSute) && !parseFloat(o.sute)) ||
-                  (o.moistureEnabled === false && !parseFloat(o.moistureValue)) ||
-                  (o.hamaliEnabled === false && !parseFloat(o.hamali)) ||
-                  (o.brokerageEnabled === false && !parseFloat(o.brokerage)) ||
-                  (o.lfEnabled === false && !parseFloat(o.lf));
-
-                return (
-                  <tr key={entry.id} style={{
-                    backgroundColor: index % 2 === 0 ? '#f9f9f9' : 'white'
+      <div style={{ overflowX: 'auto', backgroundColor: 'white', border: '1px solid #ddd' }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>Loading...</div>
+        ) : entries.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>No entries pending supervisor assignment</div>
+        ) : (
+          Object.entries(groupedEntries).map(([dateKey, brokerGroups]) => (
+            <div key={dateKey}>
+              {Object.entries(brokerGroups).map(([brokerName, brokerEntries]) => (
+                <div key={brokerName}>
+                  {/* Date + Broker Header — matching staff-side style */}
+                  <div style={{
+                    background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+                    color: 'white', padding: '8px 12px', fontWeight: '700', fontSize: '13px',
+                    letterSpacing: '0.5px', textAlign: 'center'
                   }}>
-                    <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>
-                      {entry.entryDate ? new Date(entry.entryDate).toLocaleDateString() : 'N/A'}
-                    </td>
-                    <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>{entry.brokerName}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>{entry.variety}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>{entry.partyName}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>{entry.location}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px' }}>{entry.bags}</td>
-                    <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>
-                      {o?.hamaliPerKg || o?.hamali ? <span style={set}>{o.hamaliPerKg || o.hamali}</span> : <span style={missing}>⚠️</span>}
-                    </td>
-                    <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>
-                      {o?.brokerage ? <span style={set}>{o.brokerage}</span> : <span style={missing}>⚠️</span>}
-                    </td>
-                    <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>
-                      {o?.lf ? <span style={set}>{o.lf}</span> : <span style={missing}>⚠️</span>}
-                    </td>
-                    <td style={{ border: '1px solid #ddd', padding: '6px' }}>
-                      {needsFill ? (
-                        <div style={{ textAlign: 'center' }}>
-                          <span style={{ padding: '2px 6px', borderRadius: '10px', fontSize: '10px', fontWeight: '700', background: '#fff3cd', color: '#856404', whiteSpace: 'nowrap', display: 'inline-block', marginBottom: '3px', border: '1px solid #ffeeba' }}>
-                            Manager Missing ⏳
-                          </span>
-                          <div style={{ fontSize: '9px', color: '#e74c3c', fontStyle: 'italic' }}>
-                            Fill values in Loading Lots first
-                          </div>
-                        </div>
-                      ) : user?.role !== 'manager' ? (
-                        <div style={{ fontSize: '11px', color: '#7f8c8d', fontStyle: 'italic' }}>
-                          Manager action only
-                        </div>
-                      ) : (
-                        <select
-                          value={selectedSupervisors[entry.id] || ''}
-                          onChange={(e) => handleSupervisorChange(entry.id, Number(e.target.value))}
-                          style={{
-                            width: '100%', padding: '4px', fontSize: '11px',
-                            border: '1px solid #ddd', borderRadius: '3px'
-                          }}
-                        >
-                          <option value="">-- Select Supervisor --</option>
-                          {supervisors.map(supervisor => (
-                            <option key={supervisor.id} value={supervisor.id}>
-                              {supervisor.username}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </td>
-                    <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>
-                      <button
-                        onClick={() => handleAssignClick(entry)}
-                        disabled={needsFill || !selectedSupervisors[entry.id] || user?.role !== 'manager' || isSubmitting}
-                        style={{
-                          fontSize: '10px', padding: '4px 8px',
-                          backgroundColor: (!needsFill && selectedSupervisors[entry.id] && user?.role === 'manager' && !isSubmitting) ? '#4CAF50' : '#ccc',
-                          color: 'white', border: 'none', borderRadius: '3px',
-                          cursor: (!needsFill && selectedSupervisors[entry.id] && user?.role === 'manager' && !isSubmitting) ? 'pointer' : 'not-allowed'
-                        }}
-                      >
-                        {isSubmitting ? '...' : 'Assign'}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                    {dateKey} — {brokerName} ({brokerEntries.length})
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'auto' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#4a90e2', color: 'white' }}>
+                        <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>SL</th>
+                        <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Bags</th>
+                        <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Pkg</th>
+                        <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Party</th>
+                        <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Paddy Location</th>
+                        <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Variety</th>
+                        <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Select Supervisor</th>
+                        <th style={{ border: '1px solid #357abd', padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {brokerEntries.map((entry, index) => {
+                        const o = offeringCache[entry.id] || {};
+
+                        const needsFill = (o.suteEnabled === false && !parseFloat(o.finalSute) && !parseFloat(o.sute)) ||
+                          (o.moistureEnabled === false && !parseFloat(o.moistureValue)) ||
+                          (o.hamaliEnabled === false && !parseFloat(o.hamali)) ||
+                          (o.brokerageEnabled === false && !parseFloat(o.brokerage)) ||
+                          (o.lfEnabled === false && !parseFloat(o.lf));
+
+                        return (
+                          <tr key={entry.id} style={{ backgroundColor: index % 2 === 0 ? '#f9f9f9' : 'white' }}>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>{index + 1}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.bags}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>75 Kg</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.partyName}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.location}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{entry.variety}</td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px' }}>
+                              {needsFill ? (
+                                <div style={{ textAlign: 'center' }}>
+                                  <span style={{ padding: '2px 6px', borderRadius: '10px', fontSize: '10px', fontWeight: '700', background: '#fff3cd', color: '#856404', whiteSpace: 'nowrap', display: 'inline-block', marginBottom: '3px', border: '1px solid #ffeeba' }}>
+                                    Manager Missing ⏳
+                                  </span>
+                                  <div style={{ fontSize: '9px', color: '#e74c3c', fontStyle: 'italic' }}>
+                                    Fill values in Loading Lots first
+                                  </div>
+                                </div>
+                              ) : user?.role !== 'manager' ? (
+                                <div style={{ fontSize: '11px', color: '#7f8c8d', fontStyle: 'italic' }}>
+                                  Manager action only
+                                </div>
+                              ) : (
+                                <select
+                                  value={selectedSupervisors[entry.id] || ''}
+                                  onChange={(e) => handleSupervisorChange(entry.id, Number(e.target.value))}
+                                  style={{ width: '100%', padding: '4px', fontSize: '11px', border: '1px solid #ddd', borderRadius: '3px' }}
+                                >
+                                  <option value="">-- Select Supervisor --</option>
+                                  {supervisors.map(supervisor => (
+                                    <option key={supervisor.id} value={supervisor.id}>
+                                      {supervisor.username}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                            </td>
+                            <td style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'center' }}>
+                              <button
+                                onClick={() => handleAssignClick(entry)}
+                                disabled={needsFill || !selectedSupervisors[entry.id] || user?.role !== 'manager' || isSubmitting}
+                                style={{
+                                  fontSize: '10px', padding: '4px 8px',
+                                  backgroundColor: (!needsFill && selectedSupervisors[entry.id] && user?.role === 'manager' && !isSubmitting) ? '#4CAF50' : '#ccc',
+                                  color: 'white', border: 'none', borderRadius: '3px',
+                                  cursor: (!needsFill && selectedSupervisors[entry.id] && user?.role === 'manager' && !isSubmitting) ? 'pointer' : 'not-allowed'
+                                }}
+                              >
+                                {isSubmitting ? '...' : 'Assign'}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          ))
+        )}
       </div>
 
       {/* Pagination */}

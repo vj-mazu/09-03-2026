@@ -440,7 +440,6 @@ const RiceLedger: React.FC = () => {
             // APPLY DAILY ZERO LOGIC FOR DIRECT LOAD LOCATIONS
             const locationInfo = locations.find(l => l.code === selectedLocation);
             if (locationInfo?.isDirectLoad && responseData.entries) {
-                console.log('🔄 Applying Daily Zero logic for Direct Load location:', selectedLocation);
 
                 let runningBags = 0;
                 let runningQtls = 0;

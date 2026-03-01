@@ -1,6 +1,6 @@
 const express = require('express');
 const { Op } = require('sequelize');
-const { auth } = require('../middleware/auth');
+const { auth, authorize } = require('../middleware/auth');
 const ByProduct = require('../models/ByProduct');
 const Outturn = require('../models/Outturn');
 const User = require('../models/User');
@@ -32,17 +32,17 @@ router.get('/outturn/:outturnId', auth, async (req, res) => {
 // Create or update by-product entry
 router.post('/', auth, async (req, res) => {
   try {
-    const { 
-      outturnId, 
+    const {
+      outturnId,
       date,
-      rice, 
+      rice,
       rejectionRice,
       rjRice1,
       rjRice2,
-      broken, 
-      rejectionBroken, 
-      zeroBroken, 
-      faram, 
+      broken,
+      rejectionBroken,
+      zeroBroken,
+      faram,
       bran,
       unpolished
     } = req.body;
@@ -59,7 +59,7 @@ router.post('/', auth, async (req, res) => {
     if (byProduct) {
       // Update existing - ADD to existing values (accumulate), don't replace
       const updateData = {};
-      
+
       // Only update fields that have actual values provided - ADD to existing
       if (rice !== undefined && rice !== null && rice !== '') {
         updateData.rice = parseFloat(byProduct.rice || 0) + parseFloat(rice);
@@ -91,7 +91,7 @@ router.post('/', auth, async (req, res) => {
       if (unpolished !== undefined && unpolished !== null && unpolished !== '') {
         updateData.unpolished = parseFloat(byProduct.unpolished || 0) + parseFloat(unpolished);
       }
-      
+
       // Only update if there's something to update
       if (Object.keys(updateData).length > 0) {
         await byProduct.update(updateData);

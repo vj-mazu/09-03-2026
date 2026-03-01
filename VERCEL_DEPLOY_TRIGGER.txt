@@ -1,8 +1,0 @@
-Vercel Deploy Trigger File
-Last Updated: 2026-01-31 15:30:00 UTC
-
-This file is used to trigger Vercel deployments.
-Update this timestamp whenever you want to force a Vercel rebuild.
-
-Deployment History:
-- 2026-01-31 15:30:00 - Initial trigger file created

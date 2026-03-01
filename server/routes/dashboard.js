@@ -1,5 +1,5 @@
 const express = require('express');
-const { auth } = require('../middleware/auth');
+const { auth, authorize } = require('../middleware/auth');
 const queryOptimizationService = require('../services/queryOptimizationService');
 const cacheService = require('../services/cacheService');
 

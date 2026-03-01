@@ -99,6 +99,13 @@ const WORKFLOW_TRANSITIONS = [
     allowedRoles: ['inventory_staff', 'admin', 'manager'],
     requiredData: ['physicalInspection']
   },
+  // Allow physical supervisor to add more inspections while already in PHYSICAL_INSPECTION
+  {
+    fromStatus: 'PHYSICAL_INSPECTION',
+    toStatus: 'PHYSICAL_INSPECTION',
+    allowedRoles: ['physical_supervisor', 'manager', 'admin'],
+    requiredData: []
+  },
   // Manager can close a lot early (party didn't send all bags)
   {
     fromStatus: 'LOT_ALLOTMENT',

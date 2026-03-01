@@ -154,6 +154,7 @@ class SampleEntryService {
       lfEnabled: priceData.lfEnabled || false,
       lfUnit: priceData.lfUnit || priceData.baseRateUnit || 'per_bag',
       egbValue: priceData.egbValue || priceData.egb || 0,
+      egbType: priceData.egbType || 'mill',
       customDivisor: priceData.customDivisor || null,
       createdBy: userId,
       updatedBy: userId
@@ -213,6 +214,7 @@ class SampleEntryService {
       if (finalData.lfUnit !== undefined) updates.lfUnit = finalData.lfUnit;
       if (finalData.moistureValue !== undefined) updates.moistureValue = finalData.moistureValue;
       if (finalData.egbValue !== undefined) updates.egbValue = finalData.egbValue;
+      if (finalData.egbType !== undefined) updates.egbType = finalData.egbType;
       if (finalData.customDivisor !== undefined) updates.customDivisor = finalData.customDivisor;
       if (finalData.isFinalized !== undefined) updates.isFinalized = finalData.isFinalized;
     }
@@ -229,6 +231,10 @@ class SampleEntryService {
       if (finalData.finalSute !== undefined) updates.finalSute = finalData.finalSute;
       if (finalData.finalSuteUnit !== undefined) updates.finalSuteUnit = finalData.finalSuteUnit;
       if (finalData.moistureValue !== undefined) updates.moistureValue = finalData.moistureValue;
+      if (finalData.egbValue !== undefined) updates.egbValue = finalData.egbValue;
+      if (finalData.egbType !== undefined) updates.egbType = finalData.egbType;
+      if (finalData.finalBaseRate !== undefined) updates.finalBaseRate = finalData.finalBaseRate;
+      if (finalData.isFinalized !== undefined) updates.isFinalized = finalData.isFinalized;
     }
 
     await offering.update(updates);

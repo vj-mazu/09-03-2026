@@ -549,8 +549,8 @@ const Locations: React.FC = () => {
 
       setVarietyName('');
       fetchVarieties();
-    } catch (error) {
-      toast.error(editingVariety ? 'Failed to update variety' : 'Failed to create variety');
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || (editingVariety ? 'Failed to update variety' : 'Failed to create variety'));
     }
   };
 
@@ -685,11 +685,9 @@ const Locations: React.FC = () => {
       };
 
       if (editingPackaging) {
-        console.log('Updating packaging:', editingPackaging.id, payload);
         const response = await axios.put(`/packagings/${editingPackaging.id}`, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        console.log('Update response:', response.data);
         toast.success('Packaging updated successfully and related records recalculated!');
       } else {
         await axios.post('/packagings', payload, {

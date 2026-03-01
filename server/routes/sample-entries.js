@@ -100,9 +100,7 @@ router.get('/tabs/loading-lots', authenticateToken, async (req, res) => {
     const { page = 1, pageSize = 50, broker, variety, party, location, startDate, endDate } = req.query;
 
     const where = {
-      workflowStatus: {
-        [Op.in]: ['LOT_ALLOTMENT', 'PHYSICAL_INSPECTION', 'INVENTORY_ENTRY', 'OWNER_FINANCIAL', 'MANAGER_FINANCIAL', 'FINAL_REVIEW']
-      }
+      workflowStatus: 'LOT_ALLOTMENT'
     };
     if (broker) where.brokerName = { [Op.iLike]: `%${broker}%` };
     if (variety) where.variety = { [Op.iLike]: `%${variety}%` };
@@ -125,7 +123,8 @@ router.get('/tabs/loading-lots', authenticateToken, async (req, res) => {
 
     res.json({ entries: rows, total: count, page: parseInt(page), pageSize: parseInt(pageSize) });
   } catch (error) {
-    console.error('Error getting loading lots:', error);
+    console.error('Error getting loading lots:', error.message);
+    console.error('Full error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -192,6 +191,33 @@ router.get('/tabs/sample-book', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error getting sample book:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Batch get offering data for multiple entries (for performance)
+// IMPORTANT: This must be BEFORE /:id route to avoid route shadowing
+router.get('/offering-data-batch', authenticateToken, async (req, res) => {
+  try {
+    const { ids } = req.query;
+    if (!ids) {
+      return res.status(400).json({ error: 'ids parameter is required' });
+    }
+
+    const idList = ids.split(',');
+    const offerings = await SampleEntryOffering.findAll({
+      where: { sampleEntryId: idList }
+    });
+
+    // Convert to map
+    const result = {};
+    offerings.forEach(o => {
+      result[o.sampleEntryId] = o;
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error batch fetching offering data:', error);
+    res.status(400).json({ error: error.message });
   }
 });
 
@@ -546,31 +572,7 @@ router.post('/:id/transition', authenticateToken, async (req, res) => {
   }
 });
 
-// Batch get offering data for multiple entries (for performance)
-router.get('/offering-data-batch', authenticateToken, async (req, res) => {
-  try {
-    const { ids } = req.query;
-    if (!ids) {
-      return res.status(400).json({ error: 'ids parameter is required' });
-    }
-
-    const idList = ids.split(',');
-    const offerings = await SampleEntryOffering.findAll({
-      where: { sampleEntryId: idList }
-    });
-
-    // Convert to map
-    const result = {};
-    offerings.forEach(o => {
-      result[o.sampleEntryId] = o;
-    });
-
-    res.json(result);
-  } catch (error) {
-    console.error('Error batch fetching offering data:', error);
-    res.status(400).json({ error: error.message });
-  }
-});
+// offering-data-batch route moved above /:id to prevent route shadowing
 
 // Get offering data for auto-population in final price modal
 router.get('/:id/offering-data', authenticateToken, async (req, res) => {

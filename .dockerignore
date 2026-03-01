@@ -1,0 +1,16 @@
+# Docker
+node_modules/
+.env
+.env.local
+.env.production
+*.sqlite
+*.log
+dist/
+build/
+coverage/
+.git/
+.github/
+__tests__/
+*.md
+.eslintrc*
+jest.config*

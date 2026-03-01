@@ -40,7 +40,7 @@ const ManagerSampleReports: React.FC = () => {
     };
 
     return (
-        <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
+        <div style={{ padding: '8px', width: '100%' }}>
             <div style={{
                 background: 'linear-gradient(135deg, #2c3e50 0%, #34495e 100%)',
                 padding: '16px 24px',
