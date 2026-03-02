@@ -71,6 +71,11 @@ const PhysicalInspection = sequelize.define('PhysicalInspection', {
     type: DataTypes.DECIMAL(5, 2),
     allowNull: false
   },
+  bend2: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: true,
+    field: 'bend2'
+  },
   halfLorryImageUrl: {
     type: DataTypes.STRING(500),
     allowNull: true,

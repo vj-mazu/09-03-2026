@@ -27,6 +27,7 @@ interface PreviousInspection {
   cutting1: number;
   cutting2: number;
   bend: number;
+  bend2?: number;
   reportedBy: {
     username: string;
   };
@@ -429,7 +430,7 @@ const PhysicalInspection: React.FC = () => {
                                     {inspection.bags}
                                   </td>
                                   <td style={{ border: '1px solid #ddd', padding: '4px', textAlign: 'center' }}>{inspection.cutting1} x {inspection.cutting2}</td>
-                                  <td style={{ border: '1px solid #ddd', padding: '4px', textAlign: 'right' }}>{inspection.bend}</td>
+                                  <td style={{ border: '1px solid #ddd', padding: '4px', textAlign: 'right' }}>{inspection.bend2 ? `${Number(inspection.bend).toFixed(2)} x ${Number(inspection.bend2).toFixed(2)}` : Number(inspection.bend).toFixed(2)}</td>
                                   <td style={{ border: '1px solid #ddd', padding: '4px' }}>{inspection.reportedBy.username}</td>
                                 </tr>
                               ))}
