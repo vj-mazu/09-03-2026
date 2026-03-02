@@ -300,8 +300,8 @@ const AdminSampleBook: React.FC = () => {
                                 <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700' }}>
                                     {detailMode === 'full' ? 'Complete Entry Details' : 'Entry Details'}
                                 </h3>
-                                <p style={{ margin: '4px 0 0', fontSize: '11px', opacity: 0.8 }}>
-                                    {selectedEntry.brokerName} | {new Date(selectedEntry.entryDate).toLocaleDateString('en-GB')}
+                                <p style={{ margin: '4px 0 0', fontSize: '11px', opacity: 0.9 }}>
+                                    <span style={{ color: '#ffd700', fontWeight: '600' }}>{selectedEntry.brokerName}</span> | {new Date(selectedEntry.entryDate).toLocaleDateString('en-GB')}
                                 </p>
                             </div>
                             <button onClick={() => { setShowDetailModal(false); setSelectedEntry(null); }} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', fontSize: '16px', color: 'white', fontWeight: '700' }}>✕</button>
@@ -327,7 +327,6 @@ const AdminSampleBook: React.FC = () => {
                                 <DetailItem label="Paddy Location" value={selectedEntry.location || '-'} />
                                 <DetailItem label="Lorry Number" value={(selectedEntry as any).lorryNumber || '-'} />
                                 <DetailItem label="Variety" value={selectedEntry.variety} />
-                                <DetailItem label="Broker" value={selectedEntry.brokerName} />
                             </div>
 
                             {/* Quality Parameters */}
