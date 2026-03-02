@@ -17,7 +17,7 @@ const SampleEntryPage: React.FC = () => {
   const [entries, setEntries] = useState<SampleEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasExistingQualityData, setHasExistingQualityData] = useState(false);
-  const [activeTab, setActiveTab] = useState<'MILL_SAMPLE' | 'LOCATION_SAMPLE' | 'SAMPLE_BOOK'>('SAMPLE_BOOK');
+  const [activeTab, setActiveTab] = useState<'MILL_SAMPLE' | 'LOCATION_SAMPLE' | 'SAMPLE_BOOK'>('MILL_SAMPLE');
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const [showQualitySaveConfirm, setShowQualitySaveConfirm] = useState(false);
   const [pendingSubmitEvent, setPendingSubmitEvent] = useState<React.FormEvent | null>(null);
@@ -81,48 +81,56 @@ const SampleEntryPage: React.FC = () => {
     uploadFile: null as File | null
   });
 
-  // Auto-insert × symbol for cutting/bend after 2+ digits
+  // Auto-insert × symbol for cutting/bend - 1 digit before × and 4 digits after ×
   const handleCuttingInput = (value: string) => {
-    // Allow digits, decimals and × for format like 2×21 — only ONE × allowed
-    let clean = value.replace(/[^0-9.×x]/g, '').replace(/[xX]/g, '×');
+    // Allow digits and × for format like 1×4321 — only ONE × allowed
+    let clean = value.replace(/[^0-9.×xX]/g, '').replace(/[xX]/g, '×');
     // Only allow one × symbol
     const xCount = (clean.match(/×/g) || []).length;
     if (xCount > 1) {
       const idx = clean.indexOf('×');
       clean = clean.substring(0, idx + 1) + clean.substring(idx + 1).replace(/×/g, '');
     }
+    // Enforce 1 digit before × and 4 digits after ×
+    const parts = clean.split('×');
+    const first = (parts[0] || '').substring(0, 1); // Only 1 digit before ×
+    const second = (parts[1] || '').substring(0, 4); // 4 digits after ×
+    clean = second !== undefined && clean.includes('×') ? `${first}×${second}` : first;
     setQualityData(prev => {
-      const parts = clean.split('×');
-      const first = parts[0] || '';
-      const second = parts[1] || '';
       return { ...prev, cutting: clean, cutting1: first, cutting2: second };
     });
   };
 
   const handleBendInput = (value: string) => {
-    // Allow digits, decimals and × for format like 12×15 — only ONE × allowed
-    let clean = value.replace(/[^0-9.×x]/g, '').replace(/[xX]/g, '×');
+    // Allow digits and × for format like 1×4321 — only ONE × allowed
+    let clean = value.replace(/[^0-9.×xX]/g, '').replace(/[xX]/g, '×');
     // Only allow one × symbol
     const xCount = (clean.match(/×/g) || []).length;
     if (xCount > 1) {
       const idx = clean.indexOf('×');
       clean = clean.substring(0, idx + 1) + clean.substring(idx + 1).replace(/×/g, '');
     }
+    // Enforce 1 digit before × and 4 digits after ×
+    const parts = clean.split('×');
+    const first = (parts[0] || '').substring(0, 1); // Only 1 digit before ×
+    const second = (parts[1] || '').substring(0, 4); // 4 digits after ×
+    clean = second !== undefined && clean.includes('×') ? `${first}×${second}` : first;
     setQualityData(prev => {
-      const parts = clean.split('×');
-      const first = parts[0] || '';
-      const second = parts[1] || '';
       return { ...prev, bend: clean, bend1: first, bend2: second };
     });
   };
 
-  // Helper: restrict quality param value to max 3 digits before decimal
+  // Helper: restrict quality param value - 2 digits for moisture, 3 digits for others
   const handleQualityInput = (field: string, value: string) => {
     // Remove non-numeric except decimal
     const cleaned = value.replace(/[^0-9.]/g, '');
-    // Check integer part is max 3 digits
+    // Check integer part based on field
     const parts = cleaned.split('.');
-    if (parts[0] && parts[0].length > 3) return; // block if > 3 digits before decimal
+    if (field === 'moisture') {
+      if (parts[0] && parts[0].length > 2) return; // block if > 2 digits for moisture
+    } else {
+      if (parts[0] && parts[0].length > 3) return; // block if > 3 digits for others
+    }
     setQualityData(prev => ({ ...prev, [field]: cleaned }));
   };
 
@@ -193,7 +201,6 @@ const SampleEntryPage: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    setShowSaveConfirm(false);
     if (isSubmitting) return;
 
     try {
@@ -202,6 +209,9 @@ const SampleEntryPage: React.FC = () => {
         return;
       }
       setIsSubmitting(true);
+
+      // Close confirmation dialog
+      setShowSaveConfirm(false);
 
       await sampleEntryApi.createSampleEntry({
         entryDate: formData.entryDate,
@@ -216,8 +226,10 @@ const SampleEntryPage: React.FC = () => {
         sampleCollectedBy: formData.sampleCollectedBy ? formData.sampleCollectedBy.toUpperCase() : undefined,
         sampleGivenToOffice: formData.sampleGivenToOffice
       });
-      showNotification('Sample entry created successfully', 'success');
+      
+      // Close modal after successful save
       setShowModal(false);
+      showNotification('Sample entry created successfully', 'success');
       setFormData({
         entryDate: new Date().toISOString().split('T')[0],
         brokerName: '',
@@ -241,13 +253,15 @@ const SampleEntryPage: React.FC = () => {
   // Open edit modal for a staff entry
   const handleEditEntry = (entry: SampleEntry) => {
     setEditingEntry(entry);
+    // Get bags value - handle both number and string types
+    const bagsValue = typeof entry.bags === 'number' ? entry.bags.toString() : (entry.bags || '');
     setFormData({
       entryDate: entry.entryDate?.split('T')[0] || new Date().toISOString().split('T')[0],
       brokerName: entry.brokerName || '',
       variety: entry.variety || '',
       partyName: entry.partyName || '',
       location: entry.location || '',
-      bags: entry.bags?.toString() || '',
+      bags: bagsValue,
       lorryNumber: entry.lorryNumber || '',
       packaging: (entry as any).packaging || '75',
       sampleCollectedBy: (entry as any).sampleCollectedBy || '',
@@ -407,34 +421,34 @@ const SampleEntryPage: React.FC = () => {
     if (!selectedEntry) return;
 
     try {
-      const formData = new FormData();
-      formData.append('moisture', qualityData.moisture);
-      formData.append('cutting1', qualityData.cutting1);
-      formData.append('cutting2', qualityData.cutting2);
-      formData.append('bend1', qualityData.bend1);
-      formData.append('bend2', qualityData.bend2);
-      formData.append('mixS', smixEnabled ? qualityData.mixS || '0' : '0');
-      formData.append('mixL', lmixEnabled ? qualityData.mixL || '0' : '0');
-      formData.append('mix', qualityData.mix);
-      formData.append('kandu', qualityData.kandu);
-      formData.append('oil', qualityData.oil);
-      formData.append('sk', qualityData.sk);
-      formData.append('grainsCount', qualityData.grainsCount);
-      formData.append('wbR', wbEnabled ? qualityData.wbR || '0' : '0');
-      formData.append('wbBk', wbEnabled ? qualityData.wbBk || '0' : '0');
-      formData.append('wbT', qualityData.wbT || '0');
-      formData.append('paddyWb', paddyWbEnabled ? qualityData.paddyWb || '0' : '0');
+      const formDataToSend = new FormData();
+      formDataToSend.append('moisture', qualityData.moisture);
+      formDataToSend.append('cutting1', qualityData.cutting1);
+      formDataToSend.append('cutting2', qualityData.cutting2);
+      formDataToSend.append('bend1', qualityData.bend1);
+      formDataToSend.append('bend2', qualityData.bend2);
+      formDataToSend.append('mixS', smixEnabled ? qualityData.mixS || '0' : '0');
+      formDataToSend.append('mixL', lmixEnabled ? qualityData.mixL || '0' : '0');
+      formDataToSend.append('mix', qualityData.mix);
+      formDataToSend.append('kandu', qualityData.kandu);
+      formDataToSend.append('oil', qualityData.oil);
+      formDataToSend.append('sk', qualityData.sk);
+      formDataToSend.append('grainsCount', qualityData.grainsCount);
+      formDataToSend.append('wbR', wbEnabled ? qualityData.wbR || '0' : '0');
+      formDataToSend.append('wbBk', wbEnabled ? qualityData.wbBk || '0' : '0');
+      formDataToSend.append('wbT', qualityData.wbT || '0');
+      formDataToSend.append('paddyWb', paddyWbEnabled ? qualityData.paddyWb || '0' : '0');
       // reportedBy will be auto-filled by backend from logged-in user
-      formData.append('reportedBy', user?.username || 'Unknown');
+      formDataToSend.append('reportedBy', user?.username || 'Unknown');
 
       if (qualityData.uploadFile) {
-        formData.append('photo', qualityData.uploadFile);
+        formDataToSend.append('photo', qualityData.uploadFile);
       }
 
       const method = hasExistingQualityData ? 'put' : 'post';
       await axios[method](
         `${API_URL}/sample-entries/${selectedEntry.id}/quality-parameters`,
-        formData,
+        formDataToSend,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('token')}`,
@@ -916,21 +930,28 @@ const SampleEntryPage: React.FC = () => {
                     type="text"
                     value={formData.lorryNumber}
                     onChange={(e) => handleInputChange('lorryNumber', e.target.value)}
+                    maxLength={11}
                     style={{ width: '100%', padding: '6px 8px', border: '1px solid #ddd', borderRadius: '3px', fontSize: '13px', textTransform: 'capitalize' }}
                   />
                 </div>
               )}
 
-              {/* 3. Bags */}
+              {/* 3. Bags - validation based on packaging */}
               <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', marginBottom: '4px', fontWeight: '500', color: '#555', fontSize: '13px' }}>Bags</label>
+                <label style={{ display: 'block', marginBottom: '4px', fontWeight: '500', color: '#555', fontSize: '13px' }}>
+                  Bags
+                </label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   value={formData.bags}
-                  onChange={(e) => setFormData({ ...formData, bags: e.target.value })}
+                  onChange={(e) => {
+                    const maxDigits = formData.packaging === '75' ? 4 : 5;
+                    const val = e.target.value.replace(/[^0-9]/g, '').substring(0, maxDigits);
+                    setFormData({ ...formData, bags: val });
+                  }}
                   style={{ width: '100%', padding: '6px 8px', border: '1px solid #ddd', borderRadius: '3px', fontSize: '13px' }}
                   required
-                  min="1"
                 />
               </div>
 
@@ -939,11 +960,15 @@ const SampleEntryPage: React.FC = () => {
                 <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', color: '#555', fontSize: '13px' }}>Packaging</label>
                 <div style={{ display: 'flex', gap: '20px' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px' }}>
-                    <input type="radio" name="packaging" value="75" checked={formData.packaging === '75'} onChange={() => setFormData({ ...formData, packaging: '75' })} style={{ accentColor: '#4a90e2' }} />
+                    <input type="radio" name="packaging" value="75" checked={formData.packaging === '75'} onChange={() => {
+                      setFormData({ ...formData, packaging: '75', bags: formData.bags.substring(0, 4) });
+                    }} style={{ accentColor: '#4a90e2' }} />
                     75 Kg
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px' }}>
-                    <input type="radio" name="packaging" value="40" checked={formData.packaging === '40'} onChange={() => setFormData({ ...formData, packaging: '40' })} style={{ accentColor: '#4a90e2' }} />
+                    <input type="radio" name="packaging" value="40" checked={formData.packaging === '40'} onChange={() => {
+                      setFormData({ ...formData, packaging: '40' });
+                    }} style={{ accentColor: '#4a90e2' }} />
                     40 Kg
                   </label>
                 </div>
@@ -1157,7 +1182,7 @@ const SampleEntryPage: React.FC = () => {
                   />
                 </div>
 
-                {/* Cutting — single column with auto × symbol */}
+                {/* Cutting — single column with auto × symbol - 1x4 format */}
                 <div>
                   <label style={{ display: 'block', marginBottom: '4px', fontWeight: '500', color: '#555', fontSize: '12px' }}>
                     Cutting *
@@ -1167,12 +1192,11 @@ const SampleEntryPage: React.FC = () => {
                     required
                     value={qualityData.cutting}
                     onChange={(e) => handleCuttingInput(e.target.value)}
-                    placeholder="32×24"
                     style={{ width: '100%', padding: '6px', border: '1px solid #ddd', borderRadius: '3px', fontSize: '14px', fontWeight: '700', letterSpacing: '1px', textAlign: 'center' }}
                   />
                 </div>
 
-                {/* Bend — single column with auto × symbol */}
+                {/* Bend — single column with auto × symbol - 1x4 format */}
                 <div>
                   <label style={{ display: 'block', marginBottom: '4px', fontWeight: '500', color: '#555', fontSize: '12px' }}>
                     Bend *
@@ -1181,7 +1205,6 @@ const SampleEntryPage: React.FC = () => {
                     type="text"
                     value={qualityData.bend}
                     onChange={(e) => handleBendInput(e.target.value)}
-                    placeholder="12×8"
                     style={{ width: '100%', padding: '6px', border: '1px solid #ddd', borderRadius: '3px', fontSize: '14px', fontWeight: '700', letterSpacing: '1px', textAlign: 'center' }}
                   />
                 </div>
@@ -1393,21 +1416,21 @@ const SampleEntryPage: React.FC = () => {
             boxShadow: '0 4px 20px rgba(0,0,0,0.3)', textAlign: 'center'
           }}>
             <h3 style={{ marginBottom: '16px', color: '#333', fontSize: '16px' }}>Confirm Save</h3>
-            <p style={{ marginBottom: '20px', color: '#666', fontSize: '14px' }}>Do you want to edit before saving?</p>
+            <p style={{ marginBottom: '20px', color: '#666', fontSize: '14px' }}>Are you sure you want to save this entry?</p>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
               <button
                 type="button"
                 onClick={() => setShowSaveConfirm(false)}
-                style={{ padding: '8px 20px', backgroundColor: '#e67e22', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}
+                style={{ padding: '8px 20px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}
               >
-                Yes, Edit
+                Cancel
               </button>
               <button
                 type="button"
                 onClick={handleSubmit}
                 style={{ padding: '8px 20px', backgroundColor: '#27ae60', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}
               >
-                No, Save Now
+                Save
               </button>
             </div>
           </div>
@@ -1425,21 +1448,21 @@ const SampleEntryPage: React.FC = () => {
             boxShadow: '0 4px 20px rgba(0,0,0,0.3)', textAlign: 'center'
           }}>
             <h3 style={{ marginBottom: '16px', color: '#333', fontSize: '16px' }}>Confirm Save Quality Data</h3>
-            <p style={{ marginBottom: '20px', color: '#666', fontSize: '14px' }}>Do you want to edit before saving?</p>
+            <p style={{ marginBottom: '20px', color: '#666', fontSize: '14px' }}>Are you sure you want to save quality data?</p>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
               <button
                 type="button"
                 onClick={() => setShowQualitySaveConfirm(false)}
-                style={{ padding: '8px 20px', backgroundColor: '#e67e22', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}
+                style={{ padding: '8px 20px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}
               >
-                Yes, Edit
+                Cancel
               </button>
               <button
                 type="button"
                 onClick={handleSubmitQualityParameters}
                 style={{ padding: '8px 20px', backgroundColor: '#27ae60', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}
               >
-                No, Save Now
+                Save
               </button>
             </div>
           </div>
@@ -1554,3 +1577,4 @@ const SampleEntryPage: React.FC = () => {
 };
 
 export default SampleEntryPage;
+

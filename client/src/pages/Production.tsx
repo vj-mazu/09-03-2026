@@ -189,8 +189,9 @@ const Production: React.FC = () => {
 
   const fetchVarieties = async () => {
     try {
-      const response = await axios.get<string[]>('/locations/varieties');
-      setVarieties(response.data);
+      const response = await axios.get<{ varieties: Array<{ name: string; id: number; code: string }> }>('/locations/varieties');
+      const varietyNames = response.data.varieties.map((v) => v.name);
+      setVarieties(varietyNames);
     } catch (error) {
       console.error('Error fetching varieties:', error);
     }
@@ -198,7 +199,7 @@ const Production: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.code || !formData.allottedVariety) {
       toast.error('Please fill in all fields');
       return;
@@ -238,7 +239,7 @@ const Production: React.FC = () => {
       <Grid>
         <Card>
           <CardTitle>Create New Outturn</CardTitle>
-          
+
           <form onSubmit={handleSubmit}>
             <FormGroup>
               <Label>Outturn Code *</Label>
