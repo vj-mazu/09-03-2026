@@ -9,6 +9,25 @@ if (dbUrl) {
   if ((dbUrl.startsWith('"') && dbUrl.endsWith('"')) || (dbUrl.startsWith("'") && dbUrl.endsWith("'"))) {
     dbUrl = dbUrl.slice(1, -1);
   }
+  // Encode special characters in password (e.g. @ # etc.) to prevent URL parse errors
+  try {
+    const match = dbUrl.match(/^(postgresql?:\/\/)([^:]+):([^@]+)@(.+)$/);
+    if (match) {
+      const [, protocol, user, password, rest] = match;
+      // Find the LAST @ to split user:password from host (handles @ in password)
+      const lastAtIndex = dbUrl.lastIndexOf('@');
+      const beforeAt = dbUrl.substring(0, lastAtIndex);
+      const afterAt = dbUrl.substring(lastAtIndex + 1);
+      const protocolEnd = beforeAt.indexOf('://') + 3;
+      const userPass = beforeAt.substring(protocolEnd);
+      const colonIndex = userPass.indexOf(':');
+      const actualUser = userPass.substring(0, colonIndex);
+      const actualPassword = userPass.substring(colonIndex + 1);
+      dbUrl = beforeAt.substring(0, protocolEnd) + encodeURIComponent(actualUser) + ':' + encodeURIComponent(actualPassword) + '@' + afterAt;
+    }
+  } catch (e) {
+    console.warn('Could not encode DATABASE_URL password, using as-is:', e.message);
+  }
 }
 
 if (dbUrl) {
