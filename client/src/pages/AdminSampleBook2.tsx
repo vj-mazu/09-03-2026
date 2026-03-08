@@ -10,7 +10,9 @@ import { API_URL } from '../config/api';
 
 interface SampleEntry {
     id: string;
+    serialNo?: number;
     entryDate: string;
+    createdAt: string;
     brokerName: string;
     variety: string;
     partyName: string;
@@ -50,7 +52,12 @@ interface SampleEntry {
 
 const toTitleCase = (str: string) => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : '';
 
-const AdminSampleBook2: React.FC = () => {
+interface AdminSampleBook2Props {
+    entryType?: string;
+    excludeEntryType?: string;
+}
+
+const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeEntryType }) => {
     const [entries, setEntries] = useState<SampleEntry[]>([]);
     const [loading, setLoading] = useState(false);
 
@@ -87,6 +94,9 @@ const AdminSampleBook2: React.FC = () => {
             if (dFrom) params.startDate = dFrom;
             if (dTo) params.endDate = dTo;
             if (b) params.broker = b;
+            if (entryType) params.entryType = entryType;
+            if (excludeEntryType) params.excludeEntryType = excludeEntryType;
+
             const response = await axios.get(`${API_URL}/sample-entries/by-role`, {
                 params,
                 headers: { Authorization: `Bearer ${token}` }
@@ -128,7 +138,12 @@ const AdminSampleBook2: React.FC = () => {
 
     // Group entries by date then broker
     const groupedEntries = useMemo(() => {
-        const sorted = [...entries].sort((a, b) => new Date(b.entryDate).getTime() - new Date(a.entryDate).getTime());
+        const sorted = [...entries].sort((a, b) => {
+            const dateA = new Date(a.entryDate).getTime();
+            const dateB = new Date(b.entryDate).getTime();
+            if (dateA !== dateB) return dateB - dateA; // Primary sort: Date DESC
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(); // Secondary sort: CreatedAt ASC for stable Sl No
+        });
         const grouped: Record<string, Record<string, typeof sorted>> = {};
         sorted.forEach(entry => {
             const dateKey = new Date(entry.entryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -144,6 +159,12 @@ const AdminSampleBook2: React.FC = () => {
     const cookingBadge = (entry: SampleEntry) => {
         const cr = entry.cookingReport;
         const d = entry.lotSelectionDecision;
+
+        // SOLD OUT decision
+        if (d === 'SOLDOUT') {
+            return <span style={{ background: '#800000', color: 'white', padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '800' }}>SOLD OUT</span>;
+        }
+
         // Pass Without Cooking = no cooking needed, show dash
         if (d === 'PASS_WITHOUT_COOKING') {
             return <span style={{ color: '#999', fontSize: '10px' }}>-</span>;
@@ -177,7 +198,8 @@ const AdminSampleBook2: React.FC = () => {
         let label = 'Pending';
         let bg = '#ffe0b2';
         let color = '#e65100';
-        if (s === 'FAILED' || d === 'FAIL') { bg = '#ffcdd2'; color = '#b71c1c'; label = 'Fail'; }
+        if (d === 'SOLDOUT') { bg = '#800000'; color = '#ffffff'; label = 'Sold Out'; }
+        else if (s === 'FAILED' || d === 'FAIL') { bg = '#ffcdd2'; color = '#b71c1c'; label = 'Fail'; }
         else if (d === 'PASS_WITH_COOKING' && cr && cr.status) {
             const result = cr.status.toLowerCase();
             if (result === 'pass' || result === 'ok') {
@@ -196,7 +218,7 @@ const AdminSampleBook2: React.FC = () => {
                 else { bg = '#e8f5e9'; color = '#2e7d32'; label = 'Pass'; }
             }
         }
-        else if (s === 'COMPLETED' && entry.offering?.finalPrice) { bg = '#e8f5e9'; color = '#1b5e20'; label = 'Sold Out'; }
+        else if (s === 'COMPLETED' && entry.offering?.finalPrice) { bg = '#800000'; color = '#ffffff'; label = 'Sold Out'; }
         else if (entry.offering?.finalPrice) { bg = '#e8f5e9'; color = '#2e7d32'; label = 'Pass'; }
         else if (d === 'PASS_WITHOUT_COOKING') { bg = '#e8f5e9'; color = '#2e7d32'; label = 'Pass'; }
         else { bg = '#ffe0b2'; color = '#e65100'; label = 'Pending'; }
@@ -274,7 +296,6 @@ const AdminSampleBook2: React.FC = () => {
                             <div key={dateKey} style={{ marginBottom: '20px' }}>
                                 {Object.entries(brokerGroups).sort(([a], [b]) => a.localeCompare(b)).map(([brokerName, brokerEntries], brokerIdx) => {
                                     brokerSeq++;
-                                    let slNo = 0;
                                     return (
                                         <div key={brokerName} style={{ marginBottom: '12px' }}>
                                             {/* Date + Paddy Sample bar — only first broker */}
@@ -284,7 +305,7 @@ const AdminSampleBook2: React.FC = () => {
                                                 textAlign: 'center', letterSpacing: '0.5px'
                                             }}>
                                                 {(() => { const d = new Date(brokerEntries[0]?.entryDate); return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`; })()}
-                                                &nbsp;&nbsp;Paddy Sample
+                                                &nbsp;&nbsp;{entryType === 'RICE_SAMPLE' ? 'Rice Sample' : 'Paddy Sample'}
                                             </div>}
                                             {/* Broker name bar */}
                                             <div style={{
@@ -298,12 +319,11 @@ const AdminSampleBook2: React.FC = () => {
                                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', tableLayout: 'fixed', border: '1px solid #000' }}>
                                                 <thead>
                                                     <tr style={{ backgroundColor: '#1a237e', color: 'white' }}>
-                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>SL No</th>
-                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '3.5%' }}>Type</th>
-                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '3.5%' }}>Bags</th>
+                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '3.5%' }}>SL No</th>
+                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Bags</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Pkg</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>Party Name</th>
-                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>Paddy Location</th>
+                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>{entryType === 'RICE_SAMPLE' ? 'Rice Location' : 'Paddy Location'}</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '9%' }}>Variety</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>Sample Collected By</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '11%' }}>Quality Report</th>
@@ -314,24 +334,29 @@ const AdminSampleBook2: React.FC = () => {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {brokerEntries.map((entry, index) => {
-                                                        slNo++;
+                                                    {brokerEntries.map((entry, idx) => {
                                                         const qp = entry.qualityParameters;
                                                         const cr = entry.cookingReport;
                                                         const cookingFail = entry.lotSelectionDecision === 'PASS_WITH_COOKING' && cr && cr.status && cr.status.toLowerCase() === 'fail';
                                                         const rowBg = entry.workflowStatus === 'FAILED' || entry.lotSelectionDecision === 'FAIL' || cookingFail
                                                             ? '#fff0f0'
                                                             : entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : entry.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff';
+
+                                                        const fallback = entryType === 'RICE_SAMPLE' ? '--' : '-';
+                                                        const fmtVal = (v: any, forceDecimal = false, precision = 2) => {
+                                                            if (v == null || v === '') return fallback;
+                                                            const n = Number(v);
+                                                            if (isNaN(n) || n === 0) return fallback;
+                                                            if (forceDecimal) return n.toFixed(1);
+                                                            if (precision > 2) return String(parseFloat(n.toFixed(precision)));
+                                                            return n % 1 === 0 ? String(Math.round(n)) : String(parseFloat(n.toFixed(2)));
+                                                        };
+                                                        const hasFullQuality = qp && ((qp.cutting1 && Number(qp.cutting1) !== 0) || (qp.bend1 && Number(qp.bend1) !== 0) || (qp.mix && Number(qp.mix) !== 0) || (qp.mixS && Number(qp.mixS) !== 0) || (qp.mixL && Number(qp.mixL) !== 0));
                                                         return (
                                                             <tr key={entry.id} style={{ backgroundColor: rowBg }}>
-                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>{slNo}</td>
-                                                                <td style={{ border: '1px solid #000', padding: '1px 3px', textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                                                                    {entry.entryType === 'DIRECT_LOADED_VEHICLE' && <span style={{ color: 'white', backgroundColor: '#1565c0', padding: '1px 4px', borderRadius: '3px', fontSize: '12px', fontWeight: '800' }}>RL</span>}
-                                                                    {entry.entryType === 'LOCATION_SAMPLE' && <span style={{ color: 'white', backgroundColor: '#e67e22', padding: '1px 4px', borderRadius: '3px', fontSize: '12px', fontWeight: '800' }}>LS</span>}
-                                                                    {entry.entryType !== 'DIRECT_LOADED_VEHICLE' && entry.entryType !== 'LOCATION_SAMPLE' && <span style={{ color: '#333', backgroundColor: '#fff', padding: '1px 4px', borderRadius: '3px', fontSize: '12px', fontWeight: '800', border: '1px solid #ccc' }}>MS</span>}
-                                                                </td>
-                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap' }}>{entry.bags?.toLocaleString('en-IN')}</td>
-                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap' }}>{entry.packaging || '75'} Kg</td>
+                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>{idx + 1}</td>
+                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap' }}>{entry.bags || '0'}</td>
+                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap' }}>{Number(entry.packaging) === 0 ? 'Loose' : `${entry.packaging || '75'} kg`}</td>
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '14px', cursor: 'pointer', color: '#1565c0', fontWeight: '600', textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
                                                                     onClick={() => setDetailEntry(entry)}>
                                                                     {toTitleCase(entry.partyName) || ''}

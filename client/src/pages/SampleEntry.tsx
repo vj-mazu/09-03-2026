@@ -7,13 +7,24 @@ import axios from 'axios';
 
 import { API_URL } from '../config/api';
 
-const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE' | 'SAMPLE_BOOK' }> = ({ defaultTab }) => {
+const SampleEntryPage: React.FC<{
+  defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE' | 'SAMPLE_BOOK';
+  filterEntryType?: string;
+  excludeEntryType?: string;
+}> = ({ defaultTab, filterEntryType, excludeEntryType }) => {
   const { user } = useAuth();
   const { showNotification } = useNotification();
   const [showModal, setShowModal] = useState(false);
   const [showQualityModal, setShowQualityModal] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<SampleEntry | null>(null);
-  const [entryType, setEntryType] = useState<EntryType>('CREATE_NEW');
+  const [selectedEntryType, setSelectedEntryType] = useState<EntryType>('CREATE_NEW');
+  useEffect(() => {
+    if (selectedEntryType === 'RICE_SAMPLE') {
+      setFormData(prev => ({ ...prev, packaging: '26 kg' }));
+    } else {
+      setFormData(prev => ({ ...prev, packaging: '75' }));
+    }
+  }, [selectedEntryType]);
   const [entries, setEntries] = useState<SampleEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasExistingQualityData, setHasExistingQualityData] = useState(false);
@@ -92,72 +103,73 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
     paddyWb: '',
     dryMoisture: '',
     reportedBy: '',
+    gramsReport: '10gms',
     uploadFile: null as File | null
   });
 
   // Auto-insert × symbol for cutting/bend - 1 digit before × and 4 digits after ×
   const handleCuttingInput = (value: string) => {
-    // Allow digits and × for format like 1×4321 — only ONE × allowed
+    // For Rice entries, allow manual entry with 5-digit limit and NO auto-prefix
+    if (filterEntryType === 'RICE_SAMPLE' || selectedEntry?.entryType === 'RICE_SAMPLE') {
+      const cleaned = value.replace(/[^0-9.]/g, '');
+      if (cleaned.length > 5) return;
+      setQualityData(prev => ({ ...prev, cutting: cleaned, cutting1: cleaned }));
+      return;
+    }
+
+    // Existing Paddy logic with 1× prefix
     let clean = value.replace(/[^0-9.×xX]/g, '').replace(/[xX]/g, '×');
-    // Only allow one × symbol
     const xCount = (clean.match(/×/g) || []).length;
     if (xCount > 1) {
       const idx = clean.indexOf('×');
       clean = clean.substring(0, idx + 1) + clean.substring(idx + 1).replace(/×/g, '');
     }
-    // Auto-insert × after first digit if not already there
     if (clean.length === 1 && !clean.includes('×') && /^\d$/.test(clean)) {
       clean = clean + '×';
     }
-    // Enforce 1 digit before × and 4 digits after ×
     const parts = clean.split('×');
-    const first = (parts[0] || '').substring(0, 1); // Only 1 digit before ×
-    const second = (parts[1] || '').substring(0, 4); // 4 digits after ×
+    const first = (parts[0] || '').substring(0, 1);
+    const second = (parts[1] || '').substring(0, 4);
     clean = second !== undefined && clean.includes('×') ? `${first}×${second}` : first;
-    setQualityData(prev => {
-      return { ...prev, cutting: clean, cutting1: first, cutting2: second };
-    });
+    setQualityData(prev => ({ ...prev, cutting: clean, cutting1: first, cutting2: second }));
   };
 
   const handleBendInput = (value: string) => {
-    // Allow digits and × for format like 1×4321 — only ONE × allowed
+    // For Rice entries, allow manual entry with 5-digit limit and NO auto-prefix
+    if (filterEntryType === 'RICE_SAMPLE' || selectedEntry?.entryType === 'RICE_SAMPLE') {
+      const cleaned = value.replace(/[^0-9.]/g, '');
+      if (cleaned.length > 5) return;
+      setQualityData(prev => ({ ...prev, bend: cleaned, bend1: cleaned }));
+      return;
+    }
+
+    // Existing Paddy logic with 1× prefix
     let clean = value.replace(/[^0-9.×xX]/g, '').replace(/[xX]/g, '×');
-    // Only allow one × symbol
     const xCount = (clean.match(/×/g) || []).length;
     if (xCount > 1) {
       const idx = clean.indexOf('×');
       clean = clean.substring(0, idx + 1) + clean.substring(idx + 1).replace(/×/g, '');
     }
-    // Auto-insert × after first digit if not already there
     if (clean.length === 1 && !clean.includes('×') && /^\d$/.test(clean)) {
       clean = clean + '×';
     }
-    // Enforce 1 digit before × and 4 digits after ×
     const parts = clean.split('×');
-    const first = (parts[0] || '').substring(0, 1); // Only 1 digit before ×
-    const second = (parts[1] || '').substring(0, 4); // 4 digits after ×
+    const first = (parts[0] || '').substring(0, 1);
+    const second = (parts[1] || '').substring(0, 4);
     clean = second !== undefined && clean.includes('×') ? `${first}×${second}` : first;
-    setQualityData(prev => {
-      return { ...prev, bend: clean, bend1: first, bend2: second };
-    });
+    setQualityData(prev => ({ ...prev, bend: clean, bend1: first, bend2: second }));
   };
 
-  // Helper: restrict quality param value - 2 digits for moisture, 3 digits for others
+  // Helper: restrict quality param value - 5 digits total for most, 3 digits for grains
   const handleQualityInput = (field: string, value: string) => {
     // Remove non-numeric except decimal
     const cleaned = value.replace(/[^0-9.]/g, '');
-    // Check integer part based on field
-    const parts = cleaned.split('.');
-    // 2 digits: moisture, paddyWb, wbR, wbBk, kandu, oil, sk, dryMoisture
-    // 3 digits: grainsCount
-    const twoDigitFields = ['moisture', 'paddyWb', 'wbR', 'wbBk', 'kandu', 'oil', 'sk', 'dryMoisture'];
     const threeDigitFields = ['grainsCount'];
-    if (twoDigitFields.includes(field)) {
-      if (parts[0] && parts[0].length > 2) return;
-    } else if (threeDigitFields.includes(field)) {
-      if (parts[0] && parts[0].length > 3) return;
+    if (threeDigitFields.includes(field)) {
+      if (cleaned.length > 3) return;
     } else {
-      if (parts[0] && parts[0].length > 3) return;
+      // Limit to 5 digits for moisture and other fields
+      if (cleaned.length > 5) return;
     }
     setQualityData(prev => ({ ...prev, [field]: cleaned }));
   };
@@ -188,6 +200,9 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
     try {
       setLoading(true);
       const params: any = { page, pageSize: PAGE_SIZE };
+      if (!filterEntryType && !excludeEntryType) {
+        params.excludeEntryType = 'RICE_SAMPLE';
+      }
       const dFrom = fFrom !== undefined ? fFrom : filterDateFrom;
       const dTo = fTo !== undefined ? fTo : filterDateTo;
       const b = fBroker !== undefined ? fBroker : filterBroker;
@@ -195,7 +210,10 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
       if (dFrom) params.startDate = dFrom;
       if (dTo) params.endDate = dTo;
       if (b) params.broker = b;
-      const response = await sampleEntryApi.getSampleEntriesByRole(params);
+      if (filterEntryType) params.entryType = filterEntryType;
+      if (excludeEntryType) params.excludeEntryType = excludeEntryType;
+
+      const response = await axios.get(`${API_URL}/sample-entries/by-role`, { params });
       const data = response.data as any;
       setEntries(data.entries);
       if (data.total != null) {
@@ -286,8 +304,8 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
         location: toTitleCase(formData.location),
         bags: parseInt(formData.bags),
         lorryNumber: formData.lorryNumber ? formData.lorryNumber.toUpperCase() : undefined,
-        entryType,
-        packaging: formData.packaging as '75' | '40',
+        entryType: selectedEntryType,
+        packaging: formData.packaging as any,
         sampleCollectedBy: formData.sampleCollectedBy ? toTitleCase(formData.sampleCollectedBy) : undefined,
         sampleGivenToOffice: formData.sampleGivenToOffice
       });
@@ -304,7 +322,7 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
         location: '',
         bags: '',
         lorryNumber: '',
-        packaging: '75',
+        packaging: selectedEntryType === 'RICE_SAMPLE' ? '26 kg' : '75',
         sampleCollectedBy: 'Broker Office Sample',
         sampleGivenToOffice: false
       });
@@ -321,6 +339,11 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
     setEditingEntry(entry);
     // Get bags value - handle both number and string types
     const bagsValue = typeof entry.bags === 'number' ? entry.bags.toString() : (entry.bags || '');
+
+    // Determine sampleCollectType for edit form
+    const isBroker = (entry as any).sampleCollectedBy === 'Broker Office Sample';
+    setSampleCollectType(isBroker ? 'broker' : 'supervisor');
+
     setFormData({
       entryDate: entry.entryDate?.split('T')[0] || new Date().toISOString().split('T')[0],
       brokerName: entry.brokerName || '',
@@ -333,7 +356,7 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
       sampleCollectedBy: (entry as any).sampleCollectedBy || '',
       sampleGivenToOffice: (entry as any).sampleGivenToOffice || false
     });
-    setEntryType(entry.entryType);
+    setSelectedEntryType(entry.entryType);
     setShowEditModal(true);
   };
 
@@ -397,10 +420,10 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
             if (forceDecimal) return num.toFixed(1);
             return String(num); // strips trailing zeros: 1.00 → 1, 45.00 → 45
           };
-          const c1 = zeroToEmpty(qp.cutting1, true);
-          const c2 = zeroToEmpty(qp.cutting2, true);
-          const b1 = zeroToEmpty(qp.bend1, true);
-          const b2 = zeroToEmpty(qp.bend2, true);
+          const c1 = zeroToEmpty(qp.cutting1, false);
+          const c2 = zeroToEmpty(qp.cutting2, false);
+          const b1 = zeroToEmpty(qp.bend1, false);
+          const b2 = zeroToEmpty(qp.bend2, false);
           setQualityData({
             moisture: qp.moisture?.toString() || '',
             cutting: c1 && c2 ? `${c1}×${c2}` : c1 || '',
@@ -422,6 +445,7 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
             paddyWb: zeroToEmpty(qp.paddyWb),
             dryMoisture: zeroToEmpty(qp.dryMoisture),
             reportedBy: qp.reportedBy?.toString() || '',
+            gramsReport: qp.gramsReport || '10gms',
             uploadFile: null
           });
           setHasExistingQualityData(true);
@@ -455,9 +479,16 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
             paddyWb: '',
             dryMoisture: '',
             reportedBy: '',
+            gramsReport: '10gms',
             uploadFile: null
           });
           setHasExistingQualityData(false);
+          // Reset enabled flags for new entry
+          setSmixEnabled(false);
+          setLmixEnabled(false);
+          setPaddyWbEnabled(false);
+          setWbEnabled(false);
+          setDryMoistureEnabled(false);
         }
       } catch (error) {
         console.error('Error fetching quality parameters:', error);
@@ -483,9 +514,15 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
           paddyWb: '',
           dryMoisture: '',
           reportedBy: '',
+          gramsReport: '10gms',
           uploadFile: null
         });
         setHasExistingQualityData(false);
+        setSmixEnabled(false);
+        setLmixEnabled(false);
+        setPaddyWbEnabled(false);
+        setWbEnabled(false);
+        setDryMoistureEnabled(false);
       }
     };
 
@@ -494,22 +531,32 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
 
   const handleSubmitQualityParametersWithConfirm = (e: React.FormEvent) => {
     e.preventDefault();
-    // Moisture is always required
     if (!qualityData.moisture) { showNotification('Moisture is required', 'error'); return; }
-    // 100g save = moisture + grainsCount only
-    const has100g = !!(qualityData.moisture && qualityData.grainsCount);
-    // Quality fields (excluding moisture & grainsCount which are 100g fields)
-    const qualityFields = !!(qualityData.cutting1 || qualityData.cutting2 || qualityData.bend1 || qualityData.bend2 || qualityData.mix || qualityData.kandu || qualityData.oil || qualityData.sk);
-    const allQualityFilled = !!(qualityData.cutting1 && qualityData.cutting2 && qualityData.bend1 && qualityData.bend2 && qualityData.mix && qualityData.kandu && qualityData.oil && qualityData.sk && qualityData.grainsCount);
-    // If any quality fields are partially filled, validate all required
-    if (qualityFields && !allQualityFilled) {
-      if (!qualityData.cutting1 || !qualityData.cutting2) { showNotification('Cutting is required', 'error'); return; }
-      if (!qualityData.bend1 || !qualityData.bend2) { showNotification('Bend is required', 'error'); return; }
-      if (!qualityData.mix) { showNotification('Mix is required', 'error'); return; }
+
+    if (selectedEntry?.entryType === 'RICE_SAMPLE') {
+      // All fields mandatory for Rice except toggles
+      if (!qualityData.grainsCount) { showNotification('Grains Count is required', 'error'); return; }
+      if (!qualityData.mix) { showNotification('Broken is required', 'error'); return; }
+      if (!qualityData.cutting1) { showNotification('Rice is required', 'error'); return; }
+      if (!qualityData.bend1) { showNotification('Bend is required', 'error'); return; }
+      if (!qualityData.sk) { showNotification('Mix is required', 'error'); return; }
       if (!qualityData.kandu) { showNotification('Kandu is required', 'error'); return; }
       if (!qualityData.oil) { showNotification('Oil is required', 'error'); return; }
-      if (!qualityData.sk) { showNotification('SK is required', 'error'); return; }
-      if (!qualityData.grainsCount) { showNotification('Grains Count is required', 'error'); return; }
+      if (!qualityData.gramsReport) { showNotification('Grams Report is required', 'error'); return; }
+    } else {
+      // 100g save = moisture + grainsCount only for Paddy
+      const has100g = !!(qualityData.moisture && qualityData.grainsCount);
+      const qualityFields = !!(qualityData.cutting1 || qualityData.cutting2 || qualityData.bend1 || qualityData.bend2 || qualityData.mix || qualityData.kandu || qualityData.oil || qualityData.sk);
+      const allQualityFilled = !!(qualityData.cutting1 && qualityData.cutting2 && qualityData.bend1 && qualityData.bend2 && qualityData.mix && qualityData.kandu && qualityData.oil && qualityData.sk && qualityData.grainsCount);
+      if (qualityFields && !allQualityFilled) {
+        if (!qualityData.cutting1) { showNotification('Cutting is required', 'error'); return; }
+        if (!qualityData.bend1) { showNotification('Bend is required', 'error'); return; }
+        if (!qualityData.mix) { showNotification('Mix is required', 'error'); return; }
+        if (!qualityData.kandu) { showNotification('Kandu is required', 'error'); return; }
+        if (!qualityData.oil) { showNotification('Oil is required', 'error'); return; }
+        if (!qualityData.sk) { showNotification('SK is required', 'error'); return; }
+        if (!qualityData.grainsCount) { showNotification('Grains Count is required', 'error'); return; }
+      }
     }
     setShowQualitySaveConfirm(true);
   };
@@ -521,15 +568,18 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
     // 100g = ONLY moisture (and optionally dry moisture) entered, no other quality fields
     // Quality Complete = moisture + all other required fields filled
     const allQualityFieldsFilled = !!(qualityData.moisture && qualityData.cutting1 && qualityData.cutting2 && qualityData.bend1 && qualityData.bend2 && qualityData.mix && qualityData.kandu && qualityData.oil && qualityData.sk && qualityData.grainsCount);
-    const is100GramsSave = !allQualityFieldsFilled;
+    const is100GramsSave = selectedEntry.entryType === 'RICE_SAMPLE' ? false : !allQualityFieldsFilled;
 
     try {
       const formDataToSend = new FormData();
       formDataToSend.append('moisture', qualityData.moisture);
-      formDataToSend.append('cutting1', qualityData.cutting1 || '0');
-      formDataToSend.append('cutting2', qualityData.cutting2 || '0');
-      formDataToSend.append('bend1', qualityData.bend1 || '0');
-      formDataToSend.append('bend2', qualityData.bend2 || '0');
+      formDataToSend.append('cutting1', selectedEntry.entryType === 'RICE_SAMPLE' ? qualityData.cutting1 || '0' : qualityData.cutting1 || '0');
+      formDataToSend.append('cutting2', selectedEntry.entryType === 'RICE_SAMPLE' ? qualityData.cutting2 || '0' : qualityData.cutting2 || '0');
+      formDataToSend.append('bend1', selectedEntry.entryType === 'RICE_SAMPLE' ? qualityData.bend1 || '0' : qualityData.bend1 || '0');
+      formDataToSend.append('bend2', selectedEntry.entryType === 'RICE_SAMPLE' ? qualityData.bend2 || '0' : qualityData.bend2 || '0');
+      if (selectedEntry.entryType === 'RICE_SAMPLE' && qualityData.gramsReport) {
+        formDataToSend.append('gramsReport', qualityData.gramsReport);
+      }
       formDataToSend.append('mixS', smixEnabled ? qualityData.mixS || '0' : '0');
       formDataToSend.append('mixL', lmixEnabled ? qualityData.mixL || '0' : '0');
       formDataToSend.append('mix', qualityData.mix || '0');
@@ -584,63 +634,14 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
         flexWrap: 'wrap',
         gap: '10px'
       }}>
-        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800', background: 'linear-gradient(135deg, #2e7d32, #43a047)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '1px' }}>🌾 NEW PADDY SAMPLE</h2>
+        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800', background: filterEntryType === 'RICE_SAMPLE' ? 'linear-gradient(135deg, #2e7d32, #43a047)' : 'linear-gradient(135deg, #2e7d32, #43a047)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '1px' }}>
+          {filterEntryType === 'RICE_SAMPLE' ? '🍚 NEW RICE SAMPLE' : '🌾 NEW PADDY SAMPLE'}
+        </h2>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          {/* Mill Sample button - hidden for location staff */}
-          {(user?.role !== 'staff' || user?.staffType !== 'location') && (
+          {filterEntryType === 'RICE_SAMPLE' ? (
             <button
               onClick={() => {
-                setEntryType('CREATE_NEW');
-                setSampleCollectType('broker');
-                setFormData({ entryDate: new Date().toISOString().split('T')[0], brokerName: '', variety: '', partyName: '', location: '', bags: '', lorryNumber: '', packaging: '75', sampleCollectedBy: 'Broker Office Sample', sampleGivenToOffice: false });
-                setEditingEntry(null);
-                setShowModal(true);
-              }}
-              style={{
-                padding: '8px 16px',
-                cursor: 'pointer',
-                backgroundColor: '#4CAF50',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '13px',
-                fontWeight: '600',
-                boxShadow: '0 2px 4px rgba(76,175,80,0.3)'
-              }}
-            >
-              + New Mill Sample
-            </button>
-          )}
-          {/* Ready Lorry button - hidden for location staff */}
-          {(user?.role !== 'staff' || user?.staffType !== 'location') && (
-            <button
-              onClick={() => {
-                setEntryType('DIRECT_LOADED_VEHICLE');
-                setSampleCollectType('broker');
-                setFormData({ entryDate: new Date().toISOString().split('T')[0], brokerName: '', variety: '', partyName: '', location: '', bags: '', lorryNumber: '', packaging: '75', sampleCollectedBy: 'Broker Office Sample', sampleGivenToOffice: false });
-                setEditingEntry(null);
-                setShowModal(true);
-              }}
-              style={{
-                padding: '8px 16px',
-                cursor: 'pointer',
-                backgroundColor: '#2196F3',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '13px',
-                fontWeight: '600',
-                boxShadow: '0 2px 4px rgba(33,150,243,0.3)'
-              }}
-            >
-              + Ready Lorry
-            </button>
-          )}
-          {/* Rice Sample button - same access as Mill Sample */}
-          {(user?.role !== 'staff' || user?.staffType !== 'location') && (
-            <button
-              onClick={() => {
-                setEntryType('RICE_SAMPLE');
+                setSelectedEntryType('RICE_SAMPLE');
                 setSampleCollectType('broker');
                 setFormData({ entryDate: new Date().toISOString().split('T')[0], brokerName: '', variety: '', partyName: '', location: '', bags: '', lorryNumber: '', packaging: '26 kg', sampleCollectedBy: 'Broker Office Sample', sampleGivenToOffice: false });
                 setEditingEntry(null);
@@ -658,38 +659,91 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                 boxShadow: '0 2px 4px rgba(46,125,50,0.3)'
               }}
             >
-              + Rice Sample
+              + New Rice Entry
             </button>
-          )}
-          {/* Location Sample button - hidden for mill staff */}
-          {(user?.role !== 'staff' || user?.staffType !== 'mill') && (
-            <button
-              onClick={() => {
-                setEntryType('LOCATION_SAMPLE');
-                setFormData({ entryDate: new Date().toISOString().split('T')[0], brokerName: '', variety: '', partyName: '', location: '', bags: '', lorryNumber: '', packaging: '75', sampleCollectedBy: user?.username || '', sampleGivenToOffice: false });
-                setEditingEntry(null);
-                setShowModal(true);
-              }}
-              style={{
-                padding: '8px 16px',
-                cursor: 'pointer',
-                backgroundColor: '#FF9800',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '13px',
-                fontWeight: '600',
-                boxShadow: '0 2px 4px rgba(255,152,0,0.3)'
-              }}
-            >
-              + Location Sample
-            </button>
+          ) : (
+            <>
+              {/* Mill Sample button - hidden for location staff */}
+              {(user?.role !== 'staff' || user?.staffType !== 'location') && (
+                <button
+                  onClick={() => {
+                    setSelectedEntryType('CREATE_NEW');
+                    setSampleCollectType('broker');
+                    setFormData({ entryDate: new Date().toISOString().split('T')[0], brokerName: '', variety: '', partyName: '', location: '', bags: '', lorryNumber: '', packaging: '75', sampleCollectedBy: 'Broker Office Sample', sampleGivenToOffice: false });
+                    setEditingEntry(null);
+                    setShowModal(true);
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    cursor: 'pointer',
+                    backgroundColor: '#4CAF50',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    boxShadow: '0 2px 4px rgba(76,175,80,0.3)'
+                  }}
+                >
+                  + New Mill Sample
+                </button>
+              )}
+              {/* Ready Lorry button - hidden for location staff */}
+              {(user?.role !== 'staff' || user?.staffType !== 'location') && (
+                <button
+                  onClick={() => {
+                    setSelectedEntryType('DIRECT_LOADED_VEHICLE');
+                    setSampleCollectType('broker');
+                    setFormData({ entryDate: new Date().toISOString().split('T')[0], brokerName: '', variety: '', partyName: '', location: '', bags: '', lorryNumber: '', packaging: '75', sampleCollectedBy: 'Broker Office Sample', sampleGivenToOffice: false });
+                    setEditingEntry(null);
+                    setShowModal(true);
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    cursor: 'pointer',
+                    backgroundColor: '#2196F3',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    boxShadow: '0 2px 4px rgba(33,150,243,0.3)'
+                  }}
+                >
+                  + Ready Lorry
+                </button>
+              )}
+              {/* Location Sample button - hidden for mill staff */}
+              {(user?.role !== 'staff' || user?.staffType !== 'mill') && (
+                <button
+                  onClick={() => {
+                    setSelectedEntryType('LOCATION_SAMPLE');
+                    setFormData({ entryDate: new Date().toISOString().split('T')[0], brokerName: '', variety: '', partyName: '', location: '', bags: '', lorryNumber: '', packaging: '75', sampleCollectedBy: user?.username || '', sampleGivenToOffice: false });
+                    setEditingEntry(null);
+                    setShowModal(true);
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    cursor: 'pointer',
+                    backgroundColor: '#FF9800',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    boxShadow: '0 2px 4px rgba(255,152,0,0.3)'
+                  }}
+                >
+                  + Location Sample
+                </button>
+              )}
+            </>
           )}
         </div>
-      </div>
+      </div >
 
       {/* Filter Tabs */}
-      <div style={{
+      < div style={{
         display: 'flex',
         gap: '0',
         marginBottom: '15px',
@@ -697,6 +751,9 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
       }}>
         {(['MILL_SAMPLE', 'LOCATION_SAMPLE', 'SAMPLE_BOOK'] as const)
           .filter((tab) => {
+            // Rice Sample logic: No Location Sample tab
+            if (filterEntryType === 'RICE_SAMPLE') return tab !== 'LOCATION_SAMPLE';
+
             const staffType = (user as any)?.staffType;
             if (user?.role !== 'staff' || !staffType) return true;
             // Mill staff: Mill Sample + Sample Book only (no Location Sample)
@@ -722,7 +779,11 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                 marginBottom: '-2px'
               }}
             >
-              {tab === 'MILL_SAMPLE' ? 'MILL SAMPLE' : tab === 'LOCATION_SAMPLE' ? 'LOCATION SAMPLE' : 'SAMPLE BOOK'}
+              {filterEntryType === 'RICE_SAMPLE' ? (
+                tab === 'MILL_SAMPLE' ? 'RICE SAMPLE' : tab === 'SAMPLE_BOOK' ? 'RICE SAMPLE BOOK' : tab
+              ) : (
+                tab === 'MILL_SAMPLE' ? 'MILL SAMPLE' : tab === 'LOCATION_SAMPLE' ? 'LOCATION SAMPLE' : 'PADDY SAMPLE BOOK'
+              )}
             </button>
           ))}
       </div>
@@ -791,10 +852,10 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
             )}
           </div>
         )}
-      </div>
+      </div >
 
       {/* Entries Table */}
-      <div style={{
+      < div style={{
         overflowX: 'auto',
         backgroundColor: 'white'
       }}>
@@ -815,6 +876,18 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
               if (entry.entryType === 'LOCATION_SAMPLE' && !(entry as any).sampleGivenToOffice) {
                 return false;
               }
+
+              if (filterEntryType === 'RICE_SAMPLE') {
+                const qp = (entry as any).qualityParameters;
+                const hasQuality = qp && qp.moisture != null && (
+                  (qp.cutting1 && Number(qp.cutting1) !== 0) ||
+                  (qp.bend1 && Number(qp.bend1) !== 0) ||
+                  (qp.mix && Number(qp.mix) !== 0) ||
+                  (qp.sk && Number(qp.sk) !== 0)
+                );
+                return !hasQuality;
+              }
+
               // Quality completed entries only show in Sample Book
               if (entry.workflowStatus !== 'STAFF_ENTRY') return false;
             }
@@ -822,7 +895,20 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
               // Quality completed entries only show in Sample Book
               if (entry.workflowStatus !== 'STAFF_ENTRY') return false;
             }
-            // SAMPLE_BOOK shows all entries
+            if (activeTab === 'SAMPLE_BOOK') {
+              if (filterEntryType === 'RICE_SAMPLE') {
+                // For Rice Book, only show items with some quality details filled (effectively hasQuality).
+                // "Has quality" logic from below row rendering: moisture + (cutting or bend or mix)
+                const qp = (entry as any).qualityParameters;
+                const hasQuality = qp && qp.moisture != null && (
+                  (qp.cutting1 && Number(qp.cutting1) !== 0) ||
+                  (qp.bend1 && Number(qp.bend1) !== 0) ||
+                  (qp.mix && Number(qp.mix) !== 0) ||
+                  (qp.sk && Number(qp.sk) !== 0)
+                );
+                if (!hasQuality) return false;
+              }
+            }
 
             // Date and Broker filters are handled purely by the server-side API via loadEntries()
             return true;
@@ -866,7 +952,7 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                         letterSpacing: '0.5px'
                       }}>
                         {(() => { const d = new Date(brokerEntries[0]?.entryDate); return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`; })()}
-                        &nbsp;&nbsp;Paddy Sample
+                        &nbsp;&nbsp;{filterEntryType === 'RICE_SAMPLE' ? 'Rice Sample' : 'Paddy Sample'}
                       </div>}
                       {/* Broker name bar */}
                       <div style={{
@@ -883,13 +969,15 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                       </div>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'fixed', border: '1px solid #000' }}>
                         <thead>
-                          <tr style={{ backgroundColor: '#1a237e', color: 'white' }}>
+                          <tr style={{ background: filterEntryType === 'RICE_SAMPLE' ? 'linear-gradient(135deg, #1565c0, #0d47a1)' : 'linear-gradient(135deg, #2c3e50, #000000)', color: 'white' }}>
                             <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>SL No</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Type</th>
+                            {filterEntryType !== 'RICE_SAMPLE' && (
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Type</th>
+                            )}
                             <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '6%' }}>Bags</th>
                             <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '6%' }}>Pkg</th>
                             <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '16%' }}>Party Name</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '14%' }}>Paddy Location</th>
+                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '14%' }}>{filterEntryType === 'RICE_SAMPLE' ? 'Rice Location' : 'Paddy Location'}</th>
                             <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>Variety</th>
                             <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '25%' }}>Sample Reports</th>
                             <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '14%' }}>Sample Collected By</th>
@@ -900,7 +988,7 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                             slNo++;
                             const qp = (entry as any).qualityParameters;
                             const hasQuality = qp && qp.moisture != null && ((qp.cutting1 && Number(qp.cutting1) !== 0) || (qp.bend1 && Number(qp.bend1) !== 0) || (qp.mix && Number(qp.mix) !== 0));
-                            const has100Grams = qp && qp.moisture != null && !hasQuality;
+                            const has100Grams = entry.entryType !== 'RICE_SAMPLE' && qp && qp.moisture != null && !hasQuality;
 
                             // Location staff restriction: only the creator can enter/edit quality
                             const isLocationStaff = user?.role === 'staff' && (user as any)?.staffType === 'location';
@@ -914,9 +1002,17 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                             return (
                               <tr key={entry.id} style={{ backgroundColor: entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : entry.entryType === 'LOCATION_SAMPLE' ? '#ffcc80' : '#ffffff' }}>
                                 <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', fontWeight: '700', fontSize: '13px', verticalAlign: 'middle' }}>{slNo}</td>
-                                <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', fontSize: '11px', fontWeight: '700', lineHeight: '1.2', color: entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#1565c0' : entry.entryType === 'LOCATION_SAMPLE' ? '#e65100' : entry.entryType === 'RICE_SAMPLE' ? '#2e7d32' : '#333' }}>{entry.entryType === 'DIRECT_LOADED_VEHICLE' ? 'RL' : entry.entryType === 'LOCATION_SAMPLE' ? 'LS' : entry.entryType === 'RICE_SAMPLE' ? 'RS' : 'MS'}</td>
+                                {filterEntryType !== 'RICE_SAMPLE' && (
+                                  <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', fontSize: '11px', fontWeight: '700', lineHeight: '1.2', color: entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#1565c0' : entry.entryType === 'LOCATION_SAMPLE' ? '#e65100' : entry.entryType === 'RICE_SAMPLE' ? '#2e7d32' : '#333' }}>{entry.entryType === 'DIRECT_LOADED_VEHICLE' ? 'RL' : entry.entryType === 'LOCATION_SAMPLE' ? 'LS' : entry.entryType === 'RICE_SAMPLE' ? 'RS' : 'MS'}</td>
+                                )}
                                 <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', fontSize: '13px', fontWeight: '600', lineHeight: '1.2' }}>{entry.bags?.toLocaleString('en-IN') || '0'}</td>
-                                <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', fontSize: '13px', lineHeight: '1.2' }}>{(entry as any).packaging || '75'} Kg</td>
+                                <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'center', fontSize: '13px', lineHeight: '1.2' }}>{(() => {
+                                  let pkg = String((entry as any).packaging || '75');
+                                  if (pkg.toLowerCase() === '0' || pkg.toLowerCase() === 'loose') return 'Loose';
+                                  if (pkg.toLowerCase().includes('kg')) return pkg;
+                                  if (pkg.toLowerCase().includes('tons')) return pkg;
+                                  return `${pkg} Kg`;
+                                })()}</td>
                                 <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'left', fontSize: '14px', lineHeight: '1.2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toTitleCase(entry.partyName)}{entry.entryType === 'DIRECT_LOADED_VEHICLE' && (entry as any).lorryNumber ? <div style={{ fontSize: '13px', color: '#1565c0', fontWeight: '600' }}>{((entry as any).lorryNumber).toUpperCase()}</div> : ''}</td>
                                 <td style={{ border: '1px solid #000', padding: '1px 4px', textAlign: 'left', fontSize: '14px', lineHeight: '1.2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toTitleCase(entry.location)}</td>
 
@@ -1050,7 +1146,58 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
             );
           })
         })()}
-      </div>
+      </div >
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: '15px',
+          marginTop: '20px',
+          padding: '10px',
+          backgroundColor: '#fff',
+          borderRadius: '8px',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+        }}>
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+            style={{
+              padding: '6px 12px',
+              cursor: page === 1 ? 'not-allowed' : 'pointer',
+              backgroundColor: page === 1 ? '#eee' : '#3498db',
+              color: page === 1 ? '#999' : 'white',
+              border: 'none',
+              borderRadius: '4px',
+              fontSize: '12px',
+              fontWeight: '600'
+            }}
+          >
+            Previous
+          </button>
+          <span style={{ fontSize: '12px', color: '#666', fontWeight: '500' }}>
+            Page <strong>{page}</strong> of <strong>{totalPages}</strong> ({totalEntries} entries)
+          </span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            style={{
+              padding: '6px 12px',
+              cursor: page === totalPages ? 'not-allowed' : 'pointer',
+              backgroundColor: page === totalPages ? '#eee' : '#3498db',
+              color: page === totalPages ? '#999' : 'white',
+              border: 'none',
+              borderRadius: '4px',
+              fontSize: '12px',
+              fontWeight: '600'
+            }}
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       {/* Modal - Full Screen */}
       {
@@ -1081,8 +1228,8 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
               boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
             }}>
               <div style={{
-                background: entryType === 'CREATE_NEW' ? 'linear-gradient(135deg, #2ecc71, #27ae60)' :
-                  entryType === 'DIRECT_LOADED_VEHICLE' ? 'linear-gradient(135deg, #3498db, #2980b9)' :
+                background: selectedEntryType === 'CREATE_NEW' ? 'linear-gradient(135deg, #2ecc71, #27ae60)' :
+                  selectedEntryType === 'DIRECT_LOADED_VEHICLE' ? 'linear-gradient(135deg, #3498db, #2980b9)' :
                     'linear-gradient(135deg, #e67e22, #d35400)',
                 padding: '10px 15px',
                 borderRadius: '8px 8px 0 0',
@@ -1098,7 +1245,7 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                   color: 'white',
                   letterSpacing: '0.5px'
                 }}>
-                  {entryType === 'CREATE_NEW' ? '🌾 NEW PADDY SAMPLE' : entryType === 'DIRECT_LOADED_VEHICLE' ? '🚛 READY LORRY' : entryType === 'RICE_SAMPLE' ? '🍚 NEW RICE SAMPLE' : '📍 LOCATION SAMPLE'}
+                  {selectedEntryType === 'CREATE_NEW' ? '🌾 NEW PADDY SAMPLE' : selectedEntryType === 'DIRECT_LOADED_VEHICLE' ? '🚛 READY LORRY' : selectedEntryType === 'RICE_SAMPLE' ? '🍚 NEW RICE SAMPLE' : '📍 LOCATION SAMPLE'}
                 </h3>
               </div>
               <form onSubmit={handleSubmitWithConfirm}>
@@ -1131,7 +1278,7 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                 </div>
 
                 {/* Lorry Number (only for READY LORRY) — right after Broker Name */}
-                {entryType === 'DIRECT_LOADED_VEHICLE' && (
+                {selectedEntryType === 'DIRECT_LOADED_VEHICLE' && (
                   <div style={{ marginBottom: '8px' }}>
                     <label style={{ display: 'block', marginBottom: '2px', fontWeight: '500', color: '#555', fontSize: '12px' }}>Lorry Number</label>
                     <input
@@ -1166,7 +1313,7 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                 {/* 4. Packaging - dynamic based on entryType */}
                 <div style={{ marginBottom: '8px' }}>
                   <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', color: '#555', fontSize: '13px' }}>Packaging</label>
-                  {entryType === 'RICE_SAMPLE' ? (
+                  {selectedEntryType === 'RICE_SAMPLE' ? (
                     <div style={{ display: 'flex', gap: '20px' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px' }}>
                         <input type="radio" name="packaging" value="26 kg" checked={formData.packaging === '26 kg'} onChange={() => {
@@ -1185,6 +1332,12 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                           setFormData({ ...formData, packaging: 'Tons' });
                         }} style={{ accentColor: '#4a90e2' }} />
                         Tons
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px' }}>
+                        <input type="radio" name="packaging" value="Loose" checked={formData.packaging === 'Loose'} onChange={() => {
+                          setFormData({ ...formData, packaging: 'Loose' });
+                        }} style={{ accentColor: '#4a90e2' }} />
+                        Loose
                       </label>
                     </div>
                   ) : (
@@ -1222,7 +1375,7 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                 </div>
 
                 {/* 6. Party Name — NOT for Ready Lorry */}
-                {entryType !== 'DIRECT_LOADED_VEHICLE' && (
+                {selectedEntryType !== 'DIRECT_LOADED_VEHICLE' && (
                   <div style={{ marginBottom: '8px' }}>
                     <label style={{ display: 'block', marginBottom: '2px', fontWeight: '500', color: '#555', fontSize: '12px' }}>Party Name</label>
                     <input
@@ -1235,9 +1388,8 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                   </div>
                 )}
 
-                {/* 7. Paddy Location */}
                 <div style={{ marginBottom: '8px' }}>
-                  <label style={{ display: 'block', marginBottom: '2px', fontWeight: '500', color: '#555', fontSize: '12px' }}>Paddy Location</label>
+                  <label style={{ display: 'block', marginBottom: '2px', fontWeight: '500', color: '#555', fontSize: '12px' }}>{selectedEntryType === 'RICE_SAMPLE' ? 'Rice Location' : 'Paddy Location'}</label>
                   <input
                     type="text"
                     value={formData.location}
@@ -1248,7 +1400,7 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                 </div>
 
                 {/* 8. Sample Collected By — Radio UI for Mill Sample and Rice Sample */}
-                {(entryType === 'CREATE_NEW' || entryType === 'RICE_SAMPLE') && (
+                {(selectedEntryType === 'CREATE_NEW' || selectedEntryType === 'RICE_SAMPLE') && (
                   <div style={{ marginBottom: '8px' }}>
                     <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', color: '#333', fontSize: '13px' }}>
                       Sample Collected By
@@ -1346,7 +1498,7 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                 )}
 
                 {/* Lorry Sample Collected By — Broker / Gumasta toggle for Ready Lorry */}
-                {entryType === 'DIRECT_LOADED_VEHICLE' && (
+                {selectedEntryType === 'DIRECT_LOADED_VEHICLE' && (
                   <div style={{ marginBottom: '8px' }}>
                     <label style={{ display: 'block', marginBottom: '4px', fontWeight: '600', color: '#333', fontSize: '13px' }}>
                       Lorry Sample Collected By
@@ -1444,7 +1596,7 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                 )}
 
                 {/* Sample Given To — only for LOCATION SAMPLE */}
-                {entryType === 'LOCATION_SAMPLE' && (
+                {selectedEntryType === 'LOCATION_SAMPLE' && (
                   <div style={{ marginBottom: '12px' }}>
                     <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#555', fontSize: '13px' }}>Sample Collected By</label>
                     <div style={{ display: 'flex', gap: '16px', marginBottom: '8px' }}>
@@ -1558,11 +1710,16 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                 marginBottom: '10px',
                 fontSize: '15px',
                 fontWeight: '700',
-                color: '#1a237e',
-                borderBottom: '2px solid #1a237e',
-                paddingBottom: '8px'
+                color: 'white',
+                background: selectedEntry.entryType === 'RICE_SAMPLE' ? 'linear-gradient(135deg, #1565c0, #0d47a1)' : 'linear-gradient(135deg, #2e7d32, #1b5e20)',
+                padding: '10px 14px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
               }}>
-                {hasExistingQualityData ? '✏️ Edit Quality Parameters' : '📋 Add Quality Parameters'}
+                {selectedEntry.entryType === 'RICE_SAMPLE' ? (hasExistingQualityData ? '✏️ Edit Rice Quality Parameters' : '📋 Rice Quality Parameters') : (hasExistingQualityData ? '✏️ Edit Quality Parameters' : '📋 Add Quality Parameters')}
               </h3>
 
               {/* Entry Details */}
@@ -1583,166 +1740,277 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
               </div>
 
               <form onSubmit={handleSubmitQualityParametersWithConfirm}>
-                {/* ── All Fields in one 3-column grid ── */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px 10px', alignItems: 'start', marginBottom: '10px' }}>
-                  {/* Row 1: Moisture, Dry Moisture, Grains Count */}
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Moisture <span style={{ color: '#e53935' }}>*</span></label>
-                    <input type="number" step="0.01" required value={qualityData.moisture}
-                      onChange={(e) => handleQualityInput('moisture', e.target.value)}
-                      style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
-                  </div>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
-                      <label style={{ fontWeight: '600', color: '#333', fontSize: '11px', whiteSpace: 'nowrap' }}>Dry Moisture</label>
-                      <label style={{ fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                        <input type="radio" name="dryMoistureEnabled" checked={dryMoistureEnabled} onChange={() => { setDryMoistureEnabled(true); setQualityData({ ...qualityData, dryMoisture: '' }); }} style={{ margin: 0 }} /> Y
-                      </label>
-                      <label style={{ fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                        <input type="radio" name="dryMoistureEnabled" checked={!dryMoistureEnabled} onChange={() => { setDryMoistureEnabled(false); setQualityData({ ...qualityData, dryMoisture: '' }); }} style={{ margin: 0 }} /> N
-                      </label>
-                    </div>
-                    <input type="number" step="0.01" value={qualityData.dryMoisture}
-                      onChange={(e) => handleQualityInput('dryMoisture', e.target.value)}
-                      disabled={!dryMoistureEnabled}
-                      style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', visibility: dryMoistureEnabled ? 'visible' : 'hidden' }} />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Grains Count <span style={{ color: '#e53935' }}>*</span></label>
-                    <input type="number" value={qualityData.grainsCount}
-                      onChange={(e) => handleQualityInput('grainsCount', e.target.value)}
-                      style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
-                  </div>
-
-                  {/* Row 2: Cutting, Bend, Mix */}
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Cutting <span style={{ color: '#e53935' }}>*</span></label>
-                    <input type="text" value={qualityData.cutting} placeholder="1×"
-                      onFocus={() => { if (!qualityData.cutting) handleCuttingInput('1×'); }}
-                      onChange={(e) => handleCuttingInput(e.target.value)}
-                      style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', fontWeight: '700', letterSpacing: '1px', textAlign: 'center' }} />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Bend <span style={{ color: '#e53935' }}>*</span></label>
-                    <input type="text" value={qualityData.bend} placeholder="1×"
-                      onFocus={() => { if (!qualityData.bend) handleBendInput('1×'); }}
-                      onChange={(e) => handleBendInput(e.target.value)}
-                      style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', fontWeight: '700', letterSpacing: '1px', textAlign: 'center' }} />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Mix <span style={{ color: '#e53935' }}>*</span></label>
-                    <input type="number" step="0.01" value={qualityData.mix}
-                      onChange={(e) => handleQualityInput('mix', e.target.value)}
-                      style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
-                  </div>
-
-                  {/* Row 3: SMix, LMix, SK */}
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
-                      <label style={{ fontWeight: '600', color: '#333', fontSize: '11px', whiteSpace: 'nowrap' }}>SMix</label>
-                      <label style={{ fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                        <input type="radio" name="smixEnabled" checked={smixEnabled} onChange={() => { setSmixEnabled(true); setQualityData({ ...qualityData, mixS: '' }); }} style={{ margin: 0 }} /> Y
-                      </label>
-                      <label style={{ fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                        <input type="radio" name="smixEnabled" checked={!smixEnabled} onChange={() => { setSmixEnabled(false); setQualityData({ ...qualityData, mixS: '' }); }} style={{ margin: 0 }} /> N
-                      </label>
-                    </div>
-                    <input type="number" step="0.01" value={qualityData.mixS}
-                      onChange={(e) => handleQualityInput('mixS', e.target.value)}
-                      disabled={!smixEnabled}
-                      style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', visibility: smixEnabled ? 'visible' : 'hidden' }} />
-                  </div>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
-                      <label style={{ fontWeight: '600', color: '#333', fontSize: '11px', whiteSpace: 'nowrap' }}>LMix</label>
-                      <label style={{ fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                        <input type="radio" name="lmixEnabled" checked={lmixEnabled} onChange={() => { setLmixEnabled(true); setQualityData({ ...qualityData, mixL: '' }); }} style={{ margin: 0 }} /> Y
-                      </label>
-                      <label style={{ fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                        <input type="radio" name="lmixEnabled" checked={!lmixEnabled} onChange={() => { setLmixEnabled(false); setQualityData({ ...qualityData, mixL: '' }); }} style={{ margin: 0 }} /> N
-                      </label>
-                    </div>
-                    <input type="number" step="0.01" value={qualityData.mixL}
-                      onChange={(e) => handleQualityInput('mixL', e.target.value)}
-                      disabled={!lmixEnabled}
-                      style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', visibility: lmixEnabled ? 'visible' : 'hidden' }} />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>SK <span style={{ color: '#e53935' }}>*</span></label>
-                    <input type="number" step="0.01" value={qualityData.sk}
-                      onChange={(e) => handleQualityInput('sk', e.target.value)}
-                      style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
-                  </div>
-
-                  {/* Row 4: Kandu, Oil */}
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Kandu <span style={{ color: '#e53935' }}>*</span></label>
-                    <input type="number" step="0.01" value={qualityData.kandu}
-                      onChange={(e) => handleQualityInput('kandu', e.target.value)}
-                      style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Oil <span style={{ color: '#e53935' }}>*</span></label>
-                    <input type="number" step="0.01" value={qualityData.oil}
-                      onChange={(e) => handleQualityInput('oil', e.target.value)}
-                      style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
-                  </div>
-                  <div></div>
-                </div>
-
-                {/* ── Section 3: WB Parameters ── */}
-                <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#f0f7ff', borderRadius: '6px', border: '1px solid #d0e3f7' }}>
-                  <div style={{ fontSize: '10px', fontWeight: '700', color: '#1565c0', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', borderBottom: '1px solid #bbdefb', paddingBottom: '4px' }}>WB Parameters</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px 10px', alignItems: 'start' }}>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '2px', fontWeight: '600', color: '#333', fontSize: '11px' }}>WB (R) & WB (BK)</label>
-                      <div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
-                        <label style={{ fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                          <input type="radio" name="wbEnabled" checked={wbEnabled} onChange={() => { setWbEnabled(true); setQualityData({ ...qualityData, wbR: qualityData.wbR || '', wbBk: qualityData.wbBk || '' }); }} /> Yes
-                        </label>
-                        <label style={{ fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                          <input type="radio" name="wbEnabled" checked={!wbEnabled} onChange={() => { setWbEnabled(false); setQualityData({ ...qualityData, wbR: '', wbBk: '' }); }} /> No
-                        </label>
+                {selectedEntry.entryType === 'RICE_SAMPLE' ? (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px 10px', alignItems: 'start', marginBottom: '10px' }}>
+                      {/* Row 1: Moisture, Grains Count, Broken (mix) */}
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Moisture <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="number" step="0.01" required value={qualityData.moisture}
+                          onChange={(e) => handleQualityInput('moisture', e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
                       </div>
-                      <div style={{ display: 'flex', gap: '4px', visibility: wbEnabled ? 'visible' : 'hidden' }}>
-                        <div style={{ flex: 1 }}>
-                          <label style={{ display: 'block', marginBottom: '2px', fontWeight: '500', color: '#555', fontSize: '9px' }}>R</label>
-                          <input type="number" step="0.01" value={qualityData.wbR}
-                            onChange={(e) => handleQualityInput('wbR', e.target.value)}
-                            disabled={!wbEnabled}
-                            style={{ width: '100%', padding: '4px', border: '1px solid #ddd', borderRadius: '3px', fontSize: '12px', boxSizing: 'border-box' }} />
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Grains Count <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="number" value={qualityData.grainsCount}
+                          onChange={(e) => handleQualityInput('grainsCount', e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Broken <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="number" step="0.01" value={qualityData.mix}
+                          onChange={(e) => handleQualityInput('mix', e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
+                      </div>
+
+                      {/* Row 2: Rice 1× (cutting), Bend 1×, Line Mix (sk) */}
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Rice <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="text" value={qualityData.cutting}
+                          onChange={(e) => handleCuttingInput(e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', fontWeight: '700', letterSpacing: '1px', textAlign: 'center' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Bend <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="text" value={qualityData.bend}
+                          onChange={(e) => handleBendInput(e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', fontWeight: '700', letterSpacing: '1px', textAlign: 'center' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Mix <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="number" step="0.01" value={qualityData.sk}
+                          onChange={(e) => handleQualityInput('sk', e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
+                      </div>
+
+                      {/* Row 3: SMix, LMix, Grams Report */}
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                          <label style={{ fontWeight: '600', color: '#333', fontSize: '11px', whiteSpace: 'nowrap' }}>SMix</label>
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <label style={{ fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                              <input type="radio" name="smixEnabled" checked={smixEnabled} onChange={() => { setSmixEnabled(true); if (!qualityData.mixS) setQualityData(q => ({ ...q, mixS: '' })); }} style={{ margin: 0 }} /> Y
+                            </label>
+                            <label style={{ fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                              <input type="radio" name="smixEnabled" checked={!smixEnabled} onChange={() => { setSmixEnabled(false); setQualityData(q => ({ ...q, mixS: '' })); }} style={{ margin: 0 }} /> N
+                            </label>
+                          </div>
                         </div>
-                        <div style={{ flex: 1 }}>
-                          <label style={{ display: 'block', marginBottom: '2px', fontWeight: '500', color: '#555', fontSize: '9px' }}>BK</label>
-                          <input type="number" step="0.01" value={qualityData.wbBk}
-                            onChange={(e) => handleQualityInput('wbBk', e.target.value)}
-                            disabled={!wbEnabled}
-                            style={{ width: '100%', padding: '4px', border: '1px solid #ddd', borderRadius: '3px', fontSize: '12px', boxSizing: 'border-box' }} />
+                        {smixEnabled && (
+                          <input type="number" step="0.01" value={qualityData.mixS}
+                            onChange={(e) => handleQualityInput('mixS', e.target.value)}
+                            style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
+                        )}
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                          <label style={{ fontWeight: '600', color: '#333', fontSize: '11px', whiteSpace: 'nowrap' }}>LMix</label>
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <label style={{ fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                              <input type="radio" name="lmixEnabled" checked={lmixEnabled} onChange={() => { setLmixEnabled(true); if (!qualityData.mixL) setQualityData(q => ({ ...q, mixL: '' })); }} style={{ margin: 0 }} /> Y
+                            </label>
+                            <label style={{ fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                              <input type="radio" name="lmixEnabled" checked={!lmixEnabled} onChange={() => { setLmixEnabled(false); setQualityData(q => ({ ...q, mixL: '' })); }} style={{ margin: 0 }} /> N
+                            </label>
+                          </div>
+                        </div>
+                        {lmixEnabled && (
+                          <input type="number" step="0.01" value={qualityData.mixL}
+                            onChange={(e) => handleQualityInput('mixL', e.target.value)}
+                            style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
+                        )}
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px', whiteSpace: 'nowrap' }}>Grams Report <span style={{ color: '#e53935' }}>*</span></label>
+                        <select
+                          value={qualityData.gramsReport || '10gms'}
+                          onChange={(e) => setQualityData({ ...qualityData, gramsReport: e.target.value })}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', backgroundColor: 'white' }}
+                        >
+                          <option value="10gms">10 Grams</option>
+                          <option value="5gms">5 Grams</option>
+                        </select>
+                      </div>
+
+                      {/* Row 4: Kandu, Oil */}
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Kandu <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="number" step="0.01" value={qualityData.kandu}
+                          onChange={(e) => handleQualityInput('kandu', e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Oil <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="number" step="0.01" value={qualityData.oil}
+                          onChange={(e) => handleQualityInput('oil', e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* ── All Fields in one 3-column grid ── */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px 10px', alignItems: 'start', marginBottom: '10px' }}>
+                      {/* Row 1: Moisture, Dry Moisture, Grains Count */}
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Moisture <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="number" step="0.01" required value={qualityData.moisture}
+                          onChange={(e) => handleQualityInput('moisture', e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
+                          <label style={{ fontWeight: '600', color: '#333', fontSize: '11px', whiteSpace: 'nowrap' }}>Dry Moisture</label>
+                          <label style={{ fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <input type="radio" name="dryMoistureEnabled" checked={dryMoistureEnabled} onChange={() => { setDryMoistureEnabled(true); setQualityData({ ...qualityData, dryMoisture: '' }); }} style={{ margin: 0 }} /> Y
+                          </label>
+                          <label style={{ fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <input type="radio" name="dryMoistureEnabled" checked={!dryMoistureEnabled} onChange={() => { setDryMoistureEnabled(false); setQualityData({ ...qualityData, dryMoisture: '' }); }} style={{ margin: 0 }} /> N
+                          </label>
+                        </div>
+                        <input type="number" step="0.01" value={qualityData.dryMoisture}
+                          onChange={(e) => handleQualityInput('dryMoisture', e.target.value)}
+                          disabled={!dryMoistureEnabled}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', visibility: dryMoistureEnabled ? 'visible' : 'hidden' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Grains Count <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="number" value={qualityData.grainsCount}
+                          onChange={(e) => handleQualityInput('grainsCount', e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
+                      </div>
+
+                      {/* Row 2: Cutting, Bend, Mix */}
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Cutting <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="text" value={qualityData.cutting} placeholder="1×"
+                          onFocus={() => { if (!qualityData.cutting) handleCuttingInput('1×'); }}
+                          onChange={(e) => handleCuttingInput(e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', fontWeight: '700', letterSpacing: '1px', textAlign: 'center' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Bend <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="text" value={qualityData.bend} placeholder="1×"
+                          onFocus={() => { if (!qualityData.bend) handleBendInput('1×'); }}
+                          onChange={(e) => handleBendInput(e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', fontWeight: '700', letterSpacing: '1px', textAlign: 'center' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Mix <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="number" step="0.01" value={qualityData.mix}
+                          onChange={(e) => handleQualityInput('mix', e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
+                      </div>
+
+                      {/* Row 3: SMix, LMix, SK */}
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
+                          <label style={{ fontWeight: '600', color: '#333', fontSize: '11px', whiteSpace: 'nowrap' }}>SMix</label>
+                          <label style={{ fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <input type="radio" name="smixEnabled" checked={smixEnabled} onChange={() => { setSmixEnabled(true); setQualityData({ ...qualityData, mixS: '' }); }} style={{ margin: 0 }} /> Y
+                          </label>
+                          <label style={{ fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <input type="radio" name="smixEnabled" checked={!smixEnabled} onChange={() => { setSmixEnabled(false); setQualityData({ ...qualityData, mixS: '' }); }} style={{ margin: 0 }} /> N
+                          </label>
+                        </div>
+                        <input type="number" step="0.01" value={qualityData.mixS}
+                          onChange={(e) => handleQualityInput('mixS', e.target.value)}
+                          disabled={!smixEnabled}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', visibility: smixEnabled ? 'visible' : 'hidden' }} />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
+                          <label style={{ fontWeight: '600', color: '#333', fontSize: '11px', whiteSpace: 'nowrap' }}>LMix</label>
+                          <label style={{ fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <input type="radio" name="lmixEnabled" checked={lmixEnabled} onChange={() => { setLmixEnabled(true); setQualityData({ ...qualityData, mixL: '' }); }} style={{ margin: 0 }} /> Y
+                          </label>
+                          <label style={{ fontSize: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <input type="radio" name="lmixEnabled" checked={!lmixEnabled} onChange={() => { setLmixEnabled(false); setQualityData({ ...qualityData, mixL: '' }); }} style={{ margin: 0 }} /> N
+                          </label>
+                        </div>
+                        <input type="number" step="0.01" value={qualityData.mixL}
+                          onChange={(e) => handleQualityInput('mixL', e.target.value)}
+                          disabled={!lmixEnabled}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', visibility: lmixEnabled ? 'visible' : 'hidden' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>SK <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="number" step="0.01" value={qualityData.sk}
+                          onChange={(e) => handleQualityInput('sk', e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
+                      </div>
+
+                      {/* Row 4: Kandu, Oil */}
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Kandu <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="number" step="0.01" value={qualityData.kandu}
+                          onChange={(e) => handleQualityInput('kandu', e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Oil <span style={{ color: '#e53935' }}>*</span></label>
+                        <input type="number" step="0.01" value={qualityData.oil}
+                          onChange={(e) => handleQualityInput('oil', e.target.value)}
+                          style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box' }} />
+                      </div>
+                      <div></div>
+                    </div>
+
+                    {/* ── Section 3: WB Parameters ── */}
+                    <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#f0f7ff', borderRadius: '6px', border: '1px solid #d0e3f7' }}>
+                      <div style={{ fontSize: '10px', fontWeight: '700', color: '#1565c0', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px', borderBottom: '1px solid #bbdefb', paddingBottom: '4px' }}>WB Parameters</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px 10px', alignItems: 'start' }}>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '2px', fontWeight: '600', color: '#333', fontSize: '11px' }}>WB (R) & WB (BK)</label>
+                          <div style={{ display: 'flex', gap: '8px', marginBottom: '4px' }}>
+                            <label style={{ fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                              <input type="radio" name="wbEnabled" checked={wbEnabled} onChange={() => { setWbEnabled(true); setQualityData({ ...qualityData, wbR: qualityData.wbR || '', wbBk: qualityData.wbBk || '' }); }} /> Yes
+                            </label>
+                            <label style={{ fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                              <input type="radio" name="wbEnabled" checked={!wbEnabled} onChange={() => { setWbEnabled(false); setQualityData({ ...qualityData, wbR: '', wbBk: '' }); }} /> No
+                            </label>
+                          </div>
+                          <div style={{ display: 'flex', gap: '4px', visibility: wbEnabled ? 'visible' : 'hidden' }}>
+                            <div style={{ flex: 1 }}>
+                              <label style={{ display: 'block', marginBottom: '2px', fontWeight: '500', color: '#555', fontSize: '9px' }}>R</label>
+                              <input type="number" step="0.01" value={qualityData.wbR}
+                                onChange={(e) => handleQualityInput('wbR', e.target.value)}
+                                disabled={!wbEnabled}
+                                style={{ width: '100%', padding: '4px', border: '1px solid #ddd', borderRadius: '3px', fontSize: '12px', boxSizing: 'border-box' }} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <label style={{ display: 'block', marginBottom: '2px', fontWeight: '500', color: '#555', fontSize: '9px' }}>BK</label>
+                              <input type="number" step="0.01" value={qualityData.wbBk}
+                                onChange={(e) => handleQualityInput('wbBk', e.target.value)}
+                                disabled={!wbEnabled}
+                                style={{ width: '100%', padding: '4px', border: '1px solid #ddd', borderRadius: '3px', fontSize: '12px', boxSizing: 'border-box' }} />
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>WB (T) — Auto</label>
+                          <input type="number" step="0.01" readOnly value={qualityData.wbT}
+                            style={{ width: '100%', padding: '6px', border: '1px solid #a5d6a7', borderRadius: '4px', fontSize: '12px', backgroundColor: '#e8f5e9', fontWeight: '700', cursor: 'not-allowed', boxSizing: 'border-box' }} />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Paddy WB</label>
+                          <div style={{ display: 'flex', gap: '8px', marginBottom: '3px' }}>
+                            <label style={{ fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                              <input type="radio" name="paddyWbEnabled" checked={paddyWbEnabled} onChange={() => { setPaddyWbEnabled(true); setQualityData({ ...qualityData, paddyWb: '' }); }} /> Yes
+                            </label>
+                            <label style={{ fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                              <input type="radio" name="paddyWbEnabled" checked={!paddyWbEnabled} onChange={() => { setPaddyWbEnabled(false); setQualityData({ ...qualityData, paddyWb: '' }); }} /> No
+                            </label>
+                          </div>
+                          <input type="number" step="0.01" value={qualityData.paddyWb}
+                            onChange={(e) => handleQualityInput('paddyWb', e.target.value)}
+                            disabled={!paddyWbEnabled}
+                            style={{ width: '100%', padding: '5px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', visibility: paddyWbEnabled ? 'visible' : 'hidden' }} />
                         </div>
                       </div>
                     </div>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>WB (T) — Auto</label>
-                      <input type="number" step="0.01" readOnly value={qualityData.wbT}
-                        style={{ width: '100%', padding: '6px', border: '1px solid #a5d6a7', borderRadius: '4px', fontSize: '12px', backgroundColor: '#e8f5e9', fontWeight: '700', cursor: 'not-allowed', boxSizing: 'border-box' }} />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '3px', fontWeight: '600', color: '#333', fontSize: '11px' }}>Paddy WB</label>
-                      <div style={{ display: 'flex', gap: '8px', marginBottom: '3px' }}>
-                        <label style={{ fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                          <input type="radio" name="paddyWbEnabled" checked={paddyWbEnabled} onChange={() => { setPaddyWbEnabled(true); setQualityData({ ...qualityData, paddyWb: '' }); }} /> Yes
-                        </label>
-                        <label style={{ fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                          <input type="radio" name="paddyWbEnabled" checked={!paddyWbEnabled} onChange={() => { setPaddyWbEnabled(false); setQualityData({ ...qualityData, paddyWb: '' }); }} /> No
-                        </label>
-                      </div>
-                      <input type="number" step="0.01" value={qualityData.paddyWb}
-                        onChange={(e) => handleQualityInput('paddyWb', e.target.value)}
-                        disabled={!paddyWbEnabled}
-                        style={{ width: '100%', padding: '5px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', visibility: paddyWbEnabled ? 'visible' : 'hidden' }} />
-                    </div>
-                  </div>
-                </div>
+                  </>
+                )}
                 {/* Upload & Sample Collected By */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
                   <div>
@@ -1784,6 +2052,8 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                     style={{
                       padding: '8px 18px', cursor: 'pointer',
                       backgroundColor: (() => {
+                        const isRice = selectedEntry?.entryType === 'RICE_SAMPLE';
+                        if (isRice) return hasExistingQualityData ? '#1565c0' : '#2e7d32';
                         const has100g = !!(qualityData.moisture && qualityData.grainsCount);
                         const allFilled = !!(has100g && qualityData.cutting1 && qualityData.cutting2 && qualityData.bend1 && qualityData.bend2 && qualityData.mix && qualityData.kandu && qualityData.oil && qualityData.sk);
                         if (allFilled) return hasExistingQualityData ? '#1565c0' : '#2e7d32';
@@ -1793,9 +2063,10 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                     }}
                   >
                     {(() => {
+                      const isRice = selectedEntry?.entryType === 'RICE_SAMPLE';
                       const has100g = !!(qualityData.moisture && qualityData.grainsCount);
                       const allFilled = !!(has100g && qualityData.cutting1 && qualityData.cutting2 && qualityData.bend1 && qualityData.bend2 && qualityData.mix && qualityData.kandu && qualityData.oil && qualityData.sk);
-                      if (allFilled) return hasExistingQualityData ? 'Update Quality' : 'Submit Quality';
+                      if (allFilled || isRice) return hasExistingQualityData ? 'Update Quality' : 'Submit Quality';
                       if (has100g) return hasExistingQualityData ? 'Update 100g' : 'Save 100g';
                       return hasExistingQualityData ? 'Update' : 'Save';
                     })()}
@@ -1900,8 +2171,17 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '4px', fontWeight: '500', color: '#555', fontSize: '12px' }}>Broker Name</label>
-                  <input value={formData.brokerName} onChange={(e) => handleInputChange('brokerName', e.target.value)}
-                    style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '13px' }} />
+                  <select
+                    value={formData.brokerName}
+                    onChange={(e) => setFormData({ ...formData, brokerName: e.target.value })}
+                    style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '13px', backgroundColor: 'white', cursor: 'pointer' }}
+                    required
+                  >
+                    <option value="">-- Select Broker --</option>
+                    {brokers.map((broker, index) => (
+                      <option key={index} value={broker}>{toTitleCase(broker)}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '4px', fontWeight: '500', color: '#555', fontSize: '12px' }}>Bags</label>
@@ -1918,8 +2198,17 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '4px', fontWeight: '500', color: '#555', fontSize: '12px' }}>Variety</label>
-                  <input value={formData.variety} onChange={(e) => handleInputChange('variety', e.target.value)}
-                    style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '13px' }} />
+                  <select
+                    value={formData.variety}
+                    onChange={(e) => setFormData({ ...formData, variety: e.target.value })}
+                    style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '13px', backgroundColor: 'white', cursor: 'pointer' }}
+                    required
+                  >
+                    <option value="">-- Select Variety --</option>
+                    {varieties.map((variety, index) => (
+                      <option key={index} value={variety}>{toTitleCase(variety)}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '4px', fontWeight: '500', color: '#555', fontSize: '12px' }}>Party Name</label>
@@ -1931,10 +2220,79 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
                   <input value={formData.location} onChange={(e) => handleInputChange('location', e.target.value)}
                     style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '13px' }} />
                 </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '4px', fontWeight: '500', color: '#555', fontSize: '12px' }}>Sample Collected By</label>
-                  <input value={formData.sampleCollectedBy} onChange={(e) => handleInputChange('sampleCollectedBy', e.target.value)}
-                    style={{ width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '13px' }} />
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#333', fontSize: '13px' }}>
+                    Sample Collected By
+                  </label>
+                  <div style={{ display: 'flex', gap: '16px', marginBottom: '8px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>
+                      <input
+                        type="radio"
+                        name="editSampleCollectType"
+                        checked={sampleCollectType === 'broker'}
+                        onChange={() => {
+                          setSampleCollectType('broker');
+                          setFormData(prev => ({ ...prev, sampleCollectedBy: 'Broker Office Sample' }));
+                        }}
+                        style={{ accentColor: '#e65100' }}
+                      />
+                      <span style={{ color: '#e65100', fontWeight: '700' }}>Broker Office Sample</span>
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                    <input
+                      type="radio"
+                      name="editSampleCollectType"
+                      checked={sampleCollectType === 'supervisor'}
+                      onChange={() => {
+                        setSampleCollectType('supervisor');
+                        setFormData(prev => ({ ...prev, sampleCollectedBy: '' }));
+                      }}
+                      style={{ accentColor: '#1565c0', marginTop: '4px' }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: '12px', fontWeight: '500', color: '#555', marginBottom: '4px', display: 'block' }}>Mill Gumasta Name</label>
+                      {paddySupervisors.length > 0 && !(sampleCollectType === 'supervisor' && formData.sampleCollectedBy && !paddySupervisors.some(s => toTitleCase(s.username) === formData.sampleCollectedBy)) && (
+                        <select
+                          value={sampleCollectType === 'supervisor' && paddySupervisors.some(s => toTitleCase(s.username) === formData.sampleCollectedBy) ? formData.sampleCollectedBy : ''}
+                          onChange={(e) => {
+                            setSampleCollectType('supervisor');
+                            setFormData(prev => ({ ...prev, sampleCollectedBy: e.target.value }));
+                          }}
+                          disabled={sampleCollectType !== 'supervisor'}
+                          style={{
+                            width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '13px',
+                            backgroundColor: sampleCollectType === 'supervisor' ? 'white' : '#f5f5f5',
+                            cursor: sampleCollectType === 'supervisor' ? 'pointer' : 'not-allowed',
+                            marginBottom: '6px'
+                          }}
+                        >
+                          <option value="">-- Select from list --</option>
+                          {paddySupervisors.map(s => (
+                            <option key={s.id} value={toTitleCase(s.username)}>{toTitleCase(s.username)}</option>
+                          ))}
+                        </select>
+                      )}
+                      {!(sampleCollectType === 'supervisor' && paddySupervisors.some(s => toTitleCase(s.username) === formData.sampleCollectedBy)) && (
+                        <input
+                          type="text"
+                          value={sampleCollectType === 'supervisor' && !paddySupervisors.some(s => toTitleCase(s.username) === formData.sampleCollectedBy) ? formData.sampleCollectedBy : ''}
+                          onChange={(e) => {
+                            setSampleCollectType('supervisor');
+                            const val = e.target.value;
+                            setFormData(prev => ({ ...prev, sampleCollectedBy: toTitleCase(val) }));
+                          }}
+                          placeholder="Or type name manually"
+                          disabled={sampleCollectType !== 'supervisor'}
+                          style={{
+                            width: '100%', padding: '8px', border: '1px solid #ddd', borderRadius: '4px', fontSize: '13px',
+                            backgroundColor: sampleCollectType === 'supervisor' ? 'white' : '#f5f5f5'
+                          }}
+                        />
+                      )}
+                    </div>
+                  </div>
                 </div>
                 {editingEntry.entryType === 'DIRECT_LOADED_VEHICLE' && (
                   <div>
@@ -1957,8 +2315,7 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
               </div>
             </div>
           </div>
-        )
-      }
+        )}
 
       {/* Pagination Controls */}
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', padding: '16px 0', marginTop: '12px' }}>
@@ -1980,7 +2337,7 @@ const SampleEntryPage: React.FC<{ defaultTab?: 'MILL_SAMPLE' | 'LOCATION_SAMPLE'
           Next →
         </button>
       </div>
-    </div >
+    </div>
   );
 };
 

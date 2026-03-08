@@ -29,11 +29,17 @@ class CookingReportService {
       const existing = await CookingReportRepository.findBySampleEntryId(reportData.sampleEntryId);
 
       let report;
+      let historyDate = new Date();
+      if (reportData.manualDate) {
+        const manual = new Date(reportData.manualDate);
+        historyDate.setFullYear(manual.getFullYear(), manual.getMonth(), manual.getDate());
+      }
       const historyEntry = {
-        date: reportData.manualDate ? new Date(reportData.manualDate).toISOString() : new Date().toISOString(),
+        date: historyDate.toISOString(),
         status: reportData.status || null,
         cookingDoneBy: reportData.cookingDoneBy || null,
         approvedBy: reportData.cookingApprovedBy || null,
+        remarks: reportData.remarks || null,
       };
 
       if (existing) {

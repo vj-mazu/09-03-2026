@@ -3,6 +3,7 @@ import axios from 'axios';
 
 interface SampleEntry {
     id: string;
+    serialNo?: number;
     entryDate: string;
     brokerName: string;
     variety: string;
@@ -95,6 +96,7 @@ const AdminSampleBook: React.FC = () => {
             PASS_WITH_COOKING: { label: 'Pass + Cooking', bg: '#ffe0b2', color: '#e65100' },
             PASS_WITHOUT_COOKING: { label: 'Pass', bg: '#e8f5e9', color: '#2e7d32' },
             FAIL: { label: 'Fail', bg: '#ffcdd2', color: '#b71c1c' },
+            SOLDOUT: { label: 'Sold Out', bg: '#800000', color: '#ffffff' },
         };
         const d = map[decision] || { label: decision, bg: '#f5f5f5', color: '#666' };
         return <span style={{ padding: '1px 6px', borderRadius: '10px', fontSize: '10px', fontWeight: '600', background: d.bg, color: d.color, whiteSpace: 'nowrap' }}>{d.label}</span>;
@@ -115,25 +117,25 @@ const AdminSampleBook: React.FC = () => {
             {/* Summary Cards */}
             <div style={{ display: 'flex', gap: '10px', marginBottom: '0px', flexWrap: 'wrap' }}>
                 <div style={{ background: '#e3f2fd', padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}>
-                    <span style={{ color: '#1565c0', fontWeight: '600' }}>Staff Entry:</span> {statusCounts.staff}
+                    <span style={{ color: '#1565c0', fontWeight: '600' }}>Staff Entry</span> {statusCounts.staff}
                 </div>
                 <div style={{ background: '#c8e6c9', padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}>
-                    <span style={{ color: '#2e7d32', fontWeight: '600' }}>Quality Done:</span> {statusCounts.quality}
+                    <span style={{ color: '#2e7d32', fontWeight: '600' }}>Quality Done</span> {statusCounts.quality}
                 </div>
                 <div style={{ background: '#ffe0b2', padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}>
-                    <span style={{ color: '#e65100', fontWeight: '600' }}>Cooking:</span> {statusCounts.cooking}
+                    <span style={{ color: '#e65100', fontWeight: '600' }}>Cooking</span> {statusCounts.cooking}
                 </div>
                 <div style={{ background: '#e1bee7', padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}>
-                    <span style={{ color: '#7b1fa2', fontWeight: '600' }}>Passed:</span> {statusCounts.passed}
+                    <span style={{ color: '#7b1fa2', fontWeight: '600' }}>Passed</span> {statusCounts.passed}
                 </div>
                 <div style={{ background: '#b2dfdb', padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}>
-                    <span style={{ color: '#00695c', fontWeight: '600' }}>Offer:</span> {statusCounts.offer}
+                    <span style={{ color: '#00695c', fontWeight: '600' }}>Offer</span> {statusCounts.offer}
                 </div>
                 <div style={{ background: '#e3f2fd', padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}>
-                    <span style={{ color: '#0d47a1', fontWeight: '600' }}>Final:</span> {statusCounts.final}
+                    <span style={{ color: '#0d47a1', fontWeight: '600' }}>Final</span> {statusCounts.final}
                 </div>
                 <div style={{ background: '#a5d6a7', padding: '8px 12px', borderRadius: '6px', fontSize: '12px' }}>
-                    <span style={{ color: '#1b5e20', fontWeight: '600' }}>Completed:</span> {statusCounts.completed}
+                    <span style={{ color: '#1b5e20', fontWeight: '600' }}>Completed</span> {statusCounts.completed}
                 </div>
             </div>
 
@@ -166,13 +168,12 @@ const AdminSampleBook: React.FC = () => {
                     <thead>
                         <tr style={{ background: '#1a237e', color: 'white' }}>
                             <th style={{ border: '1px solid #000', padding: '4px 5px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>SL No</th>
-                            <th style={{ border: '1px solid #000', padding: '4px 5px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>Type</th>
+                            <th style={{ border: '1px solid #000', padding: '4px 5px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Bags</th>
+                            <th style={{ border: '1px solid #000', padding: '4px 5px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Pkg</th>
                             <th style={{ border: '1px solid #000', padding: '4px 5px', fontWeight: '600', fontSize: '10px', textAlign: 'left', whiteSpace: 'nowrap', width: '5%' }}>Date</th>
                             <th style={{ border: '1px solid #000', padding: '4px 5px', fontWeight: '600', fontSize: '10px', textAlign: 'left', whiteSpace: 'nowrap', width: '7%' }}>Broker</th>
-                            <th style={{ border: '1px solid #000', padding: '4px 5px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Bags</th>
-                            <th style={{ border: '1px solid #000', padding: '4px 5px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>Pkg</th>
                             <th style={{ border: '1px solid #000', padding: '4px 5px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '10%' }}>Party Name</th>
-                            <th style={{ border: '1px solid #000', padding: '4px 5px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '10%' }}>Paddy Location</th>
+                            <th style={{ border: '1px solid #000', padding: '4px 5px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '10%' }}>Location</th>
                             <th style={{ border: '1px solid #000', padding: '4px 5px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '8%' }}>Variety</th>
                             <th style={{ border: '1px solid #000', padding: '4px 5px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '9%' }}>Sample Collected By</th>
                             <th style={{ border: '1px solid #000', padding: '4px 5px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '5%' }}>Quality</th>
@@ -204,21 +205,16 @@ const AdminSampleBook: React.FC = () => {
                                 (offer.lfEnabled === false && !parseFloat(offer.lf))
                             );
                             return (
-                                <tr key={e.id} style={{ background: e.workflowStatus === 'FAILED' || e.lotSelectionDecision === 'FAIL' ? '#fff0f0' : e.workflowStatus === 'COMPLETED' ? '#f0fff0' : e.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : e.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff', borderLeft: e.workflowStatus === 'FAILED' || e.lotSelectionDecision === 'FAIL' ? '4px solid #e74c3c' : e.workflowStatus === 'COMPLETED' ? '4px solid #27ae60' : 'none' }}>
-                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>{(i + 1 + (page - 1) * pageSize)}</td>
-                                    <td style={{ border: '1px solid #000', padding: '1px 3px', textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                                        {e.entryType === 'DIRECT_LOADED_VEHICLE' && <span style={{ color: 'white', backgroundColor: '#1565c0', padding: '1px 4px', borderRadius: '3px', fontSize: '10px', fontWeight: '800' }}>RL</span>}
-                                        {e.entryType === 'LOCATION_SAMPLE' && <span style={{ color: 'white', backgroundColor: '#e67e22', padding: '1px 4px', borderRadius: '3px', fontSize: '10px', fontWeight: '800' }}>LS</span>}
-                                        {e.entryType !== 'DIRECT_LOADED_VEHICLE' && e.entryType !== 'LOCATION_SAMPLE' && <span style={{ color: '#333', backgroundColor: '#fff', padding: '1px 4px', borderRadius: '3px', fontSize: '10px', fontWeight: '800', border: '1px solid #ccc' }}>MS</span>}
-                                    </td>
+                                <tr key={e.id} style={{ background: e.workflowStatus === 'FAILED' || e.lotSelectionDecision === 'FAIL' || e.lotSelectionDecision === 'SOLDOUT' ? '#fff0f0' : e.workflowStatus === 'COMPLETED' ? '#f0fff0' : e.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : e.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff', borderLeft: e.workflowStatus === 'FAILED' || e.lotSelectionDecision === 'FAIL' ? '4px solid #e74c3c' : e.workflowStatus === 'COMPLETED' ? '4px solid #27ae60' : 'none' }}>
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>{(e as any).serialNo || (i + 1 + (page - 1) * pageSize)}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '700', fontSize: '11px', whiteSpace: 'nowrap' }}>{e.bags || '0'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{Number(e.packaging) === 0 ? 'Loose' : `${e.packaging || '75'} kg`}</td>
                                     <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'left', fontSize: '9px', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
-                                        {new Date(e.entryDate).toLocaleDateString('en-IN')} <b style={{ color: e.entryType === 'DIRECT_LOADED_VEHICLE' ? '#1565c0' : e.entryType === 'LOCATION_SAMPLE' ? '#e67e22' : '#555' }}>{e.entryType === 'DIRECT_LOADED_VEHICLE' ? 'RL' : e.entryType === 'LOCATION_SAMPLE' ? 'LS' : 'MS'}</b>
+                                        {new Date(e.entryDate).toLocaleDateString('en-IN')}
                                     </td>
                                     <td style={{ border: '1px solid #000', padding: '2px 4px', textAlign: 'left', fontSize: '9px', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                                         {e.brokerName || '-'}
                                     </td>
-                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>{e.bags}</td>
-                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>{e.packaging || '75'}</td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '11px', whiteSpace: 'nowrap' }}>
                                         {e.partyName ? (
                                             <span
@@ -259,7 +255,9 @@ const AdminSampleBook: React.FC = () => {
                                     </td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', whiteSpace: 'nowrap' }}>{getDecisionBadge(e.lotSelectionDecision)}</td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                        {hasCooking ? (
+                                        {e.lotSelectionDecision === 'SOLDOUT' ? (
+                                            <span style={{ background: '#800000', color: 'white', padding: '1px 6px', borderRadius: '10px', fontSize: '10px', fontWeight: '800' }}>SOLD OUT</span>
+                                        ) : hasCooking ? (
                                             cr.status === 'FAIL' || e.lotSelectionDecision === 'FAIL' ? (
                                                 <span style={{ background: '#ffcdd2', color: '#b71c1c', padding: '1px 6px', borderRadius: '10px', fontSize: '10px', fontWeight: '700' }}>✕ Failed</span>
                                             ) : (

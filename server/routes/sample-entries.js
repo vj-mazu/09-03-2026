@@ -93,7 +93,7 @@ router.post('/', authenticateToken, async (req, res) => {
 // Get sample entries by role
 router.get('/by-role', authenticateToken, async (req, res) => {
   try {
-    const { status, startDate, endDate, broker, variety, party, location, page, pageSize } = req.query;
+    const { status, startDate, endDate, broker, variety, party, location, page, pageSize, entryType, excludeEntryType } = req.query;
 
     const filters = {
       status,
@@ -105,7 +105,9 @@ router.get('/by-role', authenticateToken, async (req, res) => {
       location,
       page: page ? parseInt(page) : 1,
       pageSize: pageSize ? parseInt(pageSize) : 50,
-      staffType: req.user.staffType || null
+      staffType: req.user.staffType || null,
+      entryType,
+      excludeEntryType
     };
 
     const result = await SampleEntryService.getSampleEntriesByRole(req.user.role, filters, req.user.userId);
@@ -124,7 +126,7 @@ const { cacheMiddleware, invalidateCache } = require('../middleware/cache');
 // ─── Loading Lots (passed lots in processing) ───
 router.get('/tabs/loading-lots', authenticateToken, cacheMiddleware(30), async (req, res) => {
   try {
-    const { page = 1, pageSize = 50, cursor, broker, variety, party, location, startDate, endDate } = req.query;
+    const { page = 1, pageSize = 50, cursor, broker, variety, party, location, startDate, endDate, entryType, excludeEntryType } = req.query;
 
     const where = {
       workflowStatus: 'LOT_ALLOTMENT'
@@ -134,6 +136,8 @@ router.get('/tabs/loading-lots', authenticateToken, cacheMiddleware(30), async (
     if (party) where.partyName = { [Op.iLike]: `%${party}%` };
     if (location) where.location = { [Op.iLike]: `%${location}%` };
     if (startDate && endDate) where.entryDate = { [Op.between]: [startDate, endDate] };
+    if (entryType) where.entryType = entryType;
+    if (excludeEntryType) where.entryType = { [Op.ne]: excludeEntryType };
 
     // Use cursor pagination if cursor provided, else fallback to offset
     const paginationQuery = buildCursorQuery(req.query, 'DESC');
@@ -178,7 +182,7 @@ router.get('/tabs/loading-lots', authenticateToken, cacheMiddleware(30), async (
 // ─── Completed Lots (patti not yet added) ───
 router.get('/tabs/completed-lots', authenticateToken, cacheMiddleware(30), async (req, res) => {
   try {
-    const { page = 1, pageSize = 50, broker, variety, party, location, startDate, endDate } = req.query;
+    const { page = 1, pageSize = 50, broker, variety, party, location, startDate, endDate, entryType, excludeEntryType } = req.query;
 
     const where = { workflowStatus: 'COMPLETED' };
     if (broker) where.brokerName = { [Op.iLike]: `%${broker}%` };
@@ -186,6 +190,8 @@ router.get('/tabs/completed-lots', authenticateToken, cacheMiddleware(30), async
     if (party) where.partyName = { [Op.iLike]: `%${party}%` };
     if (location) where.location = { [Op.iLike]: `%${location}%` };
     if (startDate && endDate) where.entryDate = { [Op.between]: [startDate, endDate] };
+    if (entryType) where.entryType = entryType;
+    if (excludeEntryType) where.entryType = { [Op.ne]: excludeEntryType };
 
     const paginationQuery = buildCursorQuery(req.query, 'DESC');
     const mergedWhere = { ...where, ...paginationQuery.where };
@@ -226,7 +232,7 @@ router.get('/tabs/completed-lots', authenticateToken, cacheMiddleware(30), async
 // ─── Sample Book (all entries from lot selection onwards) ───
 router.get('/tabs/sample-book', authenticateToken, cacheMiddleware(30), async (req, res) => {
   try {
-    const { page = 1, pageSize = 50, broker, variety, party, location, startDate, endDate } = req.query;
+    const { page = 1, pageSize = 50, broker, variety, party, location, startDate, endDate, entryType, excludeEntryType } = req.query;
 
     const where = {};
     if (broker) where.brokerName = { [Op.iLike]: `%${broker}%` };
@@ -234,6 +240,8 @@ router.get('/tabs/sample-book', authenticateToken, cacheMiddleware(30), async (r
     if (party) where.partyName = { [Op.iLike]: `%${party}%` };
     if (location) where.location = { [Op.iLike]: `%${location}%` };
     if (startDate && endDate) where.entryDate = { [Op.between]: [startDate, endDate] };
+    if (entryType) where.entryType = entryType;
+    if (excludeEntryType) where.entryType = { [Op.ne]: excludeEntryType };
 
     const paginationQuery = buildCursorQuery(req.query, 'DESC');
     const mergedWhere = { ...where, ...paginationQuery.where };
@@ -393,6 +401,7 @@ router.post('/:id/quality-parameters', authenticateToken, async (req, res) => {
           wbBk: parseFloatSafe(req.body.wbBk),
           wbT: parseFloatSafe(req.body.wbT),
           paddyWb: parseFloatSafe(req.body.paddyWb),
+          gramsReport: req.body.gramsReport,
           reportedBy: req.body.reportedBy || 'Quality Supervisor',
           smixEnabled: !!(req.body.mixS && parseFloat(req.body.mixS) > 0),
           lmixEnabled: !!(req.body.mixL && parseFloat(req.body.mixL) > 0),
@@ -477,7 +486,8 @@ router.put('/:id/quality-parameters', authenticateToken, async (req, res) => {
           wbR: parseFloatSafe(req.body.wbR, existing.wbR),
           wbBk: parseFloatSafe(req.body.wbBk, existing.wbBk),
           wbT: parseFloatSafe(req.body.wbT, existing.wbT),
-          paddyWb: parseFloatSafe(req.body.paddyWb, existing.paddyWb)
+          paddyWb: parseFloatSafe(req.body.paddyWb, existing.paddyWb),
+          gramsReport: req.body.gramsReport !== undefined ? req.body.gramsReport : existing.gramsReport
         };
 
         // Handle photo upload if present
@@ -545,7 +555,7 @@ router.post('/:id/lot-selection', authenticateToken, async (req, res) => {
       nextStatus = 'FINAL_REPORT';
     } else if (decision === 'PASS_WITH_COOKING') {
       nextStatus = 'COOKING_REPORT';
-    } else if (decision === 'FAIL') {
+    } else if (decision === 'FAIL' || decision === 'SOLDOUT') {
       nextStatus = 'FAILED';
     } else {
       return res.status(400).json({ error: 'Invalid decision' });
@@ -1139,7 +1149,7 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
 // Get sample entry ledger
 router.get('/ledger/all', authenticateToken, async (req, res) => {
   try {
-    const { startDate, endDate, broker, variety, party, location, status, limit, page, pageSize } = req.query;
+    const { startDate, endDate, broker, variety, party, location, status, limit, page, pageSize, excludeEntryType } = req.query;
 
     const filters = {
       startDate: startDate ? new Date(startDate) : undefined,
@@ -1151,7 +1161,8 @@ router.get('/ledger/all', authenticateToken, async (req, res) => {
       status,
       limit: limit ? parseInt(limit) : undefined,
       page: page ? parseInt(page) : 1,
-      pageSize: pageSize ? parseInt(pageSize) : 100
+      pageSize: pageSize ? parseInt(pageSize) : 100,
+      excludeEntryType
     };
 
     const ledger = await SampleEntryService.getSampleEntryLedger(filters);

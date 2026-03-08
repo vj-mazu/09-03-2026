@@ -7,7 +7,9 @@ import { API_URL } from '../config/api';
 
 interface SampleEntry {
   id: string;
+  serialNo?: number;
   entryDate: string;
+  createdAt: string;
   brokerName: string;
   variety: string;
   partyName: string;
@@ -41,7 +43,12 @@ interface SupervisorUser {
 
 const toTitleCase = (str: string) => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : '';
 
-const CookingReport: React.FC = () => {
+interface CookingReportProps {
+  entryType?: string;
+  excludeEntryType?: string;
+}
+
+const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryType }) => {
   const { user } = useAuth();
   const { showNotification } = useNotification();
   const [entries, setEntries] = useState<SampleEntry[]>([]);
@@ -64,7 +71,18 @@ const CookingReport: React.FC = () => {
   const [historyModal, setHistoryModal] = useState<{ visible: boolean; title: string; content: React.ReactNode }>({ visible: false, title: '', content: null });
 
   // --- NEW RICE FEATURE STATES ---
-  const [activeTab, setActiveTab] = useState<'PADDY_COOKING_REPORT' | 'RICE_COOKING_REPORT'>('PADDY_COOKING_REPORT');
+  const [activeTab, setActiveTab] = useState<'PADDY_COOKING_REPORT' | 'RICE_COOKING_REPORT'>(
+    entryType === 'RICE_SAMPLE' ? 'RICE_COOKING_REPORT' : 'PADDY_COOKING_REPORT'
+  );
+
+  // Synchronize activeTab if props change (though unlikely in this app's routing)
+  useEffect(() => {
+    if (entryType === 'RICE_SAMPLE') {
+      setActiveTab('RICE_COOKING_REPORT');
+    } else if (excludeEntryType === 'RICE_SAMPLE') {
+      setActiveTab('PADDY_COOKING_REPORT');
+    }
+  }, [entryType, excludeEntryType]);
 
   // Custom states for Admin/Manager 'Cooking Approved by' toggles
   const [approvalType, setApprovalType] = useState<'owner' | 'manager' | 'admin' | 'manual'>('owner');
@@ -124,6 +142,9 @@ const CookingReport: React.FC = () => {
       if (dFrom) params.startDate = dFrom;
       if (dTo) params.endDate = dTo;
       if (b) params.broker = b;
+      if (entryType) params.entryType = entryType;
+      if (excludeEntryType) params.excludeEntryType = excludeEntryType;
+
       const response = await axios.get(`${API_URL}/sample-entries/by-role`, {
         params,
         headers: { Authorization: `Bearer ${token}` }
@@ -275,6 +296,111 @@ const CookingReport: React.FC = () => {
     return grouped;
   }, [entries]);
 
+  const handleOpenHistory = (entry: any, type: 'all' | 'cooking' | 'approval' | 'single-remark' = 'all', singleEventOverride: any = null) => {
+    if (type === 'single-remark' && singleEventOverride) {
+      setHistoryModal({
+        visible: true,
+        title: 'Remark Details',
+        content: <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap' }}>{singleEventOverride.remarks}</div>
+      });
+      return;
+    }
+
+    const cr = entry.cookingReport || {};
+    let history = cr.history ? [...cr.history] : [];
+
+    // Synthesize legacy history if missing
+    const hasStaffHistory = history.some((h: any) => h.cookingDoneBy && !h.status);
+    if (!hasStaffHistory && cr?.cookingDoneBy) {
+      history = [{ cookingDoneBy: cr.cookingDoneBy, date: null }, ...history];
+    }
+
+    const hasAdminHistory = history.some((h: any) => h.approvedBy && h.status);
+    if (!hasAdminHistory && cr?.cookingApprovedBy) {
+      history.push({ approvedBy: cr.cookingApprovedBy, status: cr.status, date: null, remarks: cr.remarks });
+    }
+
+    // Add Sample Report Entry (Step 0) for Full History
+    if (type === 'all' && entry.qualityParameters) {
+      history.unshift({
+        isSampleReportEvent: true,
+        reportedBy: entry.qualityParameters.reportedBy || 'Unknown',
+        date: entry.qualityParameters.createdAt || entry.createdAt || null,
+        status: 'Sample Reported',
+        remarks: entry.qualityParameters.remarks || 'Sample selected and initially reported.'
+      });
+    }
+
+    let modalTitle = 'History';
+    if (type === 'cooking') {
+      history = history.filter((h: any) => h.cookingDoneBy && !h.status);
+      modalTitle = 'Cooking History';
+    } else if (type === 'approval') {
+      history = history.filter((h: any) => h.approvedBy && h.status);
+      modalTitle = 'Approval History';
+    } else if (type === 'single-remark' && singleEventOverride) {
+      history = [singleEventOverride];
+      modalTitle = 'Remark Details';
+    } else {
+      modalTitle = 'Full History';
+    }
+
+    const statusMap: Record<string, { color: string; bg: string; label: string }> = {
+      PASS: { color: '#27ae60', bg: '#e8f5e9', label: '✓ Pass' },
+      FAIL: { color: '#e74c3c', bg: '#fdecea', label: '✕ Fail' },
+      RECHECK: { color: '#e67e22', bg: '#fff3e0', label: '↻ Recheck' },
+      MEDIUM: { color: '#f39c12', bg: '#ffe0b2', label: '◎ Medium' },
+      'Sample Reported': { color: '#607d8b', bg: '#eceff1', label: '📝 Sample Reported' }
+    };
+    if (history.length > 0) {
+      const histContent = (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
+          {history.map((h: any, i: number) => {
+            const isStatusAction = !!h.status;
+            let actionBy = isStatusAction ? (h.approvedBy || 'Unknown') : (h.cookingDoneBy || 'Unknown');
+
+            if (h.isSampleReportEvent) {
+              actionBy = h.reportedBy;
+            }
+
+            const sc = isStatusAction && h.status ? (statusMap[h.status] || { color: '#ffffff', bg: '#607d8b', label: h.status }) : null;
+
+            return (
+              <div key={i} style={{ padding: '10px', border: '1px solid #eee', borderRadius: '6px', backgroundColor: isStatusAction ? '#f8f9fa' : '#ffffff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontWeight: '600', color: isStatusAction ? '#1565c0' : '#6a1b9a', fontSize: '13px' }}>
+                      {i + 1}. {actionBy}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
+                      {h.date ? new Date(h.date).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '-'}
+                    </div>
+                  </div>
+                  {isStatusAction && sc && (
+                    <span style={{ fontSize: '11px', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', backgroundColor: sc.bg, color: sc.color }}>
+                      {h.status}
+                    </span>
+                  )}
+                </div>
+                {h.remarks && (
+                  <div style={{ marginTop: '8px', padding: '6px 8px', backgroundColor: '#fff3e0', borderLeft: '3px solid #ff9800', fontSize: '12px', color: '#333' }}>
+                    <span style={{ fontWeight: '600', color: '#e65100', fontSize: '11px', display: 'block', marginBottom: '2px' }}>Remark:</span>
+                    {h.remarks}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      );
+      setHistoryModal({ visible: true, title: modalTitle, content: histContent });
+    } else if (cr.remarks) {
+      setHistoryModal({ visible: true, title: 'Remarks', content: <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap' }}>{cr.remarks}</div> });
+    } else {
+      setHistoryModal({ visible: true, title: modalTitle, content: <div style={{ fontSize: '14px', color: '#666', fontStyle: 'italic' }}>No history for this entry.</div> });
+    }
+  };
+
   const getStatusBadge = (entry: SampleEntry) => {
     if (!entry.cookingReport) {
       return <span style={{ color: '#e67e22', fontWeight: '700' }}>⏳ Pending</span>;
@@ -284,10 +410,10 @@ const CookingReport: React.FC = () => {
       PASS: { color: '#27ae60', bg: '#e8f5e9', label: '✓ Pass' },
       FAIL: { color: '#e74c3c', bg: '#fdecea', label: '✕ Fail' },
       RECHECK: { color: '#e67e22', bg: '#fff3e0', label: '↻ Recheck' },
-      MEDIUM: { color: '#f39c12', bg: '#ffe0b2', label: '◎ Medium' }
+      MEDIUM: { color: '#f39c12', bg: '#ffe0b2', label: '◎ Medium' },
+      SOLDOUT: { color: '#ffffff', bg: '#800000', label: 'SOLD OUT' }
     };
 
-    // Check if the exact last action was staff adding cookingDoneBy
     const history = cr.history || [];
     const lastHistory = history.length > 0 ? history[history.length - 1] : null;
     const isWaitingForAdmin = lastHistory && !lastHistory.status && lastHistory.cookingDoneBy;
@@ -304,17 +430,9 @@ const CookingReport: React.FC = () => {
       }
     }
 
-    const handleBadgeClick = () => {
-      if (cr.remarks) {
-        setHistoryModal({ visible: true, title: 'Remarks', content: <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap' }}>{cr.remarks}</div> });
-      } else {
-        setHistoryModal({ visible: true, title: 'Remarks', content: <div style={{ fontSize: '14px', color: '#666', fontStyle: 'italic' }}>No remarks for this entry.</div> });
-      }
-    };
-
     return (
       <span
-        onClick={handleBadgeClick}
+        onClick={() => handleOpenHistory(entry, 'all')}
         style={{
           color: info.color,
           backgroundColor: info.bg,
@@ -324,103 +442,108 @@ const CookingReport: React.FC = () => {
           fontSize: '11px',
           cursor: 'pointer'
         }}
-        title="Click to see remarks"
+        title="Click to see full history"
       >
         {info.label}
       </span>
     );
   };
 
-  const renderCookingDoneByWithDate = (cr: any, fallback: string) => {
-    if (!cr?.history || cr.history.length === 0) {
-      return <div>{cr?.cookingDoneBy || fallback || '-'}</div>;
-    }
-
-    // Only count entries where staff submitted (no status = staff action)
-    const cookings = cr.history.filter((h: any) => h.cookingDoneBy && !h.status);
-    if (cookings.length === 0) return <div>{cr?.cookingDoneBy || fallback || '-'}</div>;
-
-    const handleClick = () => {
-      const histContent = (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
-          {cookings.map((c: any, i: number) => (
-            <div key={i} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9' }}>
-              <div style={{ fontWeight: '600', color: '#333', fontSize: '14px' }}>{i + 1}. {c.cookingDoneBy}</div>
-              <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>{new Date(c.date).toLocaleString('en-GB')}</div>
-            </div>
-          ))}
-        </div>
-      );
-      setHistoryModal({ visible: true, title: 'Cooking History', content: histContent });
-    };
-
-    const latestIndex = cookings.length - 1;
-    const latest = cookings[latestIndex];
+  const renderSampleReportByWithDate = (entry: any) => {
+    const qp = entry.qualityParameters;
+    if (!qp || !qp.reportedBy) return '-';
 
     return (
-      <div onClick={handleClick} style={{ cursor: 'pointer' }} title="Click to view history">
-        <div style={{ fontWeight: '600', color: '#6a1b9a' }}>{latestIndex + 1}. {latest.cookingDoneBy}</div>
-        {latest.date && (
-          <div style={{ fontSize: '10px', color: '#666', marginTop: '1px', fontWeight: 'normal' }}>
-            {new Date(latest.date).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'center' }}>
+        <div style={{ fontWeight: '600', color: '#333', lineHeight: '1.2' }}>{toTitleCase(qp.reportedBy)}</div>
+        {qp.remarks && (
+          <div
+            onClick={() => handleOpenHistory(entry, 'single-remark', {
+              isSampleReportEvent: true,
+              reportedBy: qp.reportedBy || 'Unknown',
+              date: qp.createdAt || entry.createdAt || null,
+              status: 'Sample Reported',
+              remarks: qp.remarks
+            })}
+            style={{
+              fontSize: '10.5px', color: '#558b2f', backgroundColor: '#ffffff',
+              padding: '2px 6px', borderRadius: '4px', marginTop: '4px',
+              border: '1px solid #c5e1a5', fontWeight: '700',
+              cursor: 'pointer', display: 'inline-block', margin: '0 auto',
+              transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}>
+            Remarks 🔍
           </div>
         )}
       </div>
     );
   };
 
-  const renderApprovedByWithDate = (cr: any) => {
-    if (!cr?.history || cr.history.length === 0) {
-      return cr?.cookingApprovedBy ? <div>{cr.cookingApprovedBy}</div> : '-';
+  const renderCookingDoneByWithDate = (entry: any, fallback: string) => {
+    const cr = entry.cookingReport;
+    let cookings = (cr?.history || []).filter((h: any) => h.cookingDoneBy && !h.status);
+
+    if (cookings.length === 0 && cr?.cookingDoneBy) {
+      cookings = [{ cookingDoneBy: cr.cookingDoneBy, date: null }];
     }
 
-    // Only count entries where admin submitted (has status = admin action)
-    const approvals = cr.history.filter((h: any) => h.approvedBy && h.status);
-    if (approvals.length === 0) return '-';
-
-    const handleClick = () => {
-      const histContent = (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
-          {approvals.map((a: any, i: number) => (
-            <div key={i} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: '600', color: '#333', fontSize: '14px' }}>{i + 1}. {a.approvedBy}</span>
-                <span style={{ fontWeight: '700', fontSize: '12px', padding: '2px 6px', borderRadius: '4px', backgroundColor: a.status === 'PASS' ? '#e8f5e9' : a.status === 'FAIL' ? '#fdecea' : a.status === 'RECHECK' ? '#fff3e0' : '#ffe0b2', color: a.status === 'PASS' ? '#27ae60' : a.status === 'FAIL' ? '#e74c3c' : a.status === 'RECHECK' ? '#e67e22' : '#f39c12' }}>
-                  {a.status || 'No Status'}
-                </span>
-              </div>
-              <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>{new Date(a.date).toLocaleString('en-GB')}</div>
-            </div>
-          ))}
-        </div>
-      );
-      setHistoryModal({ visible: true, title: 'Approval History', content: histContent });
-    };
-
-    const latestIndex = approvals.length - 1;
-    const latest = approvals[latestIndex];
-
-    const statusColors: Record<string, { color: string; bg: string }> = {
-      PASS: { color: '#27ae60', bg: '#e8f5e9' },
-      FAIL: { color: '#e74c3c', bg: '#fdecea' },
-      RECHECK: { color: '#e67e22', bg: '#fff3e0' },
-      MEDIUM: { color: '#f39c12', bg: '#ffe0b2' }
-    };
-    const sc = latest.status ? statusColors[latest.status] : null;
+    if (cookings.length === 0) return <div>{fallback || '-'}</div>;
 
     return (
-      <div onClick={handleClick} style={{ cursor: 'pointer' }} title="Click to view history">
-        <div style={{ fontWeight: '600', color: '#1565c0' }}>{latestIndex + 1}. {latest.approvedBy}</div>
-        {sc && (
-          <span style={{ fontSize: '10px', fontWeight: '700', padding: '1px 5px', borderRadius: '3px', backgroundColor: sc.bg, color: sc.color }}>
-            {latest.status}
-          </span>
-        )}
-        {latest.date && (
-          <div style={{ fontSize: '10px', color: '#666', marginTop: '1px', fontWeight: 'normal' }}>
-            {new Date(latest.date).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-          </div>
-        )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        {cookings.map((h: any, i: number) => {
+          return (
+            <div key={i} style={{ borderBottom: i < cookings.length - 1 ? '1px dashed #ccc' : 'none', paddingBottom: i < cookings.length - 1 ? '6px' : '0' }}>
+              <div style={{ fontWeight: '600', color: '#6a1b9a', lineHeight: '1.2' }}>{i + 1}. {toTitleCase(h.cookingDoneBy)}</div>
+              {h.date && (
+                <div style={{ fontSize: '10px', color: '#666', marginTop: '2px', fontWeight: 'normal', whiteSpace: 'normal', lineHeight: '1.2' }}>
+                  {new Date(h.date).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderApprovedByWithDate = (entry: any) => {
+    const cr = entry.cookingReport || {};
+    let approvals = (cr?.history || []).filter((h: any) => h.approvedBy && h.status);
+
+    if (approvals.length === 0 && cr?.cookingApprovedBy) {
+      approvals = [{ approvedBy: cr.cookingApprovedBy, status: cr?.status, date: null, remarks: cr?.remarks }];
+    }
+
+    if (approvals.length === 0) return '-';
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        {approvals.map((h: any, i: number) => {
+          return (
+            <div key={i} style={{ borderBottom: i < approvals.length - 1 ? '1px dashed #ccc' : 'none', paddingBottom: i < approvals.length - 1 ? '6px' : '0' }}>
+              <div style={{ fontWeight: '600', color: '#1565c0', lineHeight: '1.2' }}>{i + 1}. {toTitleCase(h.approvedBy)}</div>
+              {h.date && (
+                <div style={{ fontSize: '10px', color: '#666', marginTop: '2px', fontWeight: 'normal', whiteSpace: 'normal', lineHeight: '1.2' }}>
+                  {new Date(h.date).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}
+                </div>
+              )}
+              {h.remarks && (
+                <div
+                  onClick={() => handleOpenHistory(entry, 'single-remark', h)}
+                  style={{
+                    fontSize: '10.5px', color: '#e65100', backgroundColor: '#ffffff',
+                    padding: '2px 6px', borderRadius: '4px', marginTop: '4px',
+                    border: '1px solid #ffcc80', fontWeight: '700',
+                    cursor: 'pointer', display: 'inline-block',
+                    transition: 'all 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                  }}>
+                  Remarks 🔍
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -432,7 +555,12 @@ const CookingReport: React.FC = () => {
   }, [entries]);
 
   const displayGrouped = useMemo(() => {
-    const sorted = [...displayEntries].sort((a, b) => new Date(b.entryDate).getTime() - new Date(a.entryDate).getTime());
+    const sorted = [...displayEntries].sort((a, b) => {
+      const dateA = new Date(a.entryDate).getTime();
+      const dateB = new Date(b.entryDate).getTime();
+      if (dateA !== dateB) return dateB - dateA;
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
     const grouped: Record<string, Record<string, typeof sorted>> = {};
     sorted.forEach(entry => {
       const dateKey = new Date(entry.entryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -448,28 +576,32 @@ const CookingReport: React.FC = () => {
     <div>
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
-        <button
-          onClick={() => setActiveTab('PADDY_COOKING_REPORT')}
-          style={{
-            padding: '8px 20px', fontSize: '13px', fontWeight: '700', border: 'none', borderRadius: '6px 6px 0 0', cursor: 'pointer', whiteSpace: 'nowrap',
-            backgroundColor: activeTab === 'PADDY_COOKING_REPORT' ? '#1a237e' : '#e0e0e0',
-            color: activeTab === 'PADDY_COOKING_REPORT' ? 'white' : '#555',
-            boxShadow: activeTab === 'PADDY_COOKING_REPORT' ? '0 -2px 5px rgba(0,0,0,0.1)' : 'none',
-          }}
-        >
-          📖 Paddy Cooking Sample
-        </button>
-        <button
-          onClick={() => setActiveTab('RICE_COOKING_REPORT')}
-          style={{
-            padding: '8px 20px', fontSize: '13px', fontWeight: '700', border: 'none', borderRadius: '6px 6px 0 0', cursor: 'pointer', whiteSpace: 'nowrap',
-            backgroundColor: activeTab === 'RICE_COOKING_REPORT' ? '#d35400' : '#e0e0e0',
-            color: activeTab === 'RICE_COOKING_REPORT' ? 'white' : '#555',
-            boxShadow: activeTab === 'RICE_COOKING_REPORT' ? '0 -2px 5px rgba(0,0,0,0.1)' : 'none',
-          }}
-        >
-          🍚 Rice Cooking Sample
-        </button>
+        {(!entryType || entryType !== 'RICE_SAMPLE') && (
+          <button
+            onClick={() => setActiveTab('PADDY_COOKING_REPORT')}
+            style={{
+              padding: '8px 20px', fontSize: '13px', fontWeight: '700', border: 'none', borderRadius: '6px 6px 0 0', cursor: 'pointer', whiteSpace: 'nowrap',
+              backgroundColor: activeTab === 'PADDY_COOKING_REPORT' ? '#1a237e' : '#e0e0e0',
+              color: activeTab === 'PADDY_COOKING_REPORT' ? 'white' : '#555',
+              boxShadow: activeTab === 'PADDY_COOKING_REPORT' ? '0 -2px 5px rgba(0,0,0,0.1)' : 'none',
+            }}
+          >
+            📖 PADDY SAMPLE COOKING
+          </button>
+        )}
+        {(!excludeEntryType || excludeEntryType !== 'RICE_SAMPLE') && (
+          <button
+            onClick={() => setActiveTab('RICE_COOKING_REPORT')}
+            style={{
+              padding: '8px 20px', fontSize: '13px', fontWeight: '700', border: 'none', borderRadius: '6px 6px 0 0', cursor: 'pointer', whiteSpace: 'nowrap',
+              backgroundColor: activeTab === 'RICE_COOKING_REPORT' ? '#d35400' : '#e0e0e0',
+              color: activeTab === 'RICE_COOKING_REPORT' ? 'white' : '#555',
+              boxShadow: activeTab === 'RICE_COOKING_REPORT' ? '0 -2px 5px rgba(0,0,0,0.1)' : 'none',
+            }}
+          >
+            🍚 RICE SAMPLE COOKING
+          </button>
+        )}
       </div>
 
       {activeTab === 'PADDY_COOKING_REPORT' && (
@@ -540,23 +672,36 @@ const CookingReport: React.FC = () => {
               <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>No cooking reports found</div>
             ) : (
               Object.entries(displayGrouped).map(([dateKey, brokerGroups]) => {
+                // Filter brokers that have at least one Paddy entry
+                const visibleBrokers = Object.entries(brokerGroups)
+                  .map(([bName, bEntries]) => ({
+                    name: bName,
+                    entries: bEntries.filter((e: any) => entryType === 'RICE_SAMPLE' ? e.entryType === 'RICE_SAMPLE' : e.entryType !== 'RICE_SAMPLE')
+                  }))
+                  .filter(b => b.entries.length > 0)
+                  .sort((a, b) => a.name.localeCompare(b.name));
+
+                if (visibleBrokers.length === 0) return null;
+
                 let brokerSeq = 0;
                 return (
                   <div key={dateKey} style={{ marginBottom: '20px' }}>
-                    {Object.entries(brokerGroups).sort(([a], [b]) => a.localeCompare(b)).map(([brokerName, brokerEntries], brokerIdx) => {
+                    {visibleBrokers.map((brokerGroup, vIdx) => {
                       brokerSeq++;
-                      let slNo = 0;
+                      const { name: brokerName, entries: paddyEntries } = brokerGroup;
                       return (
                         <div key={brokerName} style={{ marginBottom: '0px' }}>
-                          {/* Date bar — only first broker */}
-                          {brokerIdx === 0 && <div style={{
-                            background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
-                            color: 'white', padding: '6px 10px', fontWeight: '700', fontSize: '14px',
-                            textAlign: 'center', letterSpacing: '0.5px'
-                          }}>
-                            {(() => { const d = new Date(brokerEntries[0]?.entryDate); return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`; })()}
-                            &nbsp;&nbsp;Paddy Sample Cooking
-                          </div>}
+                          {/* Date bar — only first visible broker */}
+                          {vIdx === 0 && (
+                            <div style={{
+                              background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+                              color: 'white', padding: '6px 10px', fontWeight: '700', fontSize: '14px',
+                              textAlign: 'center', letterSpacing: '0.5px'
+                            }}>
+                              {(() => { const d = new Date(paddyEntries[0]?.entryDate); return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`; })()}
+                              &nbsp;&nbsp;{(activeTab as string) === 'RICE_COOKING_REPORT' ? 'Rice Sample Cooking' : 'Paddy Sample Cooking'}
+                            </div>
+                          )}
                           {/* Broker name bar */}
                           <div style={{
                             background: '#e8eaf6',
@@ -567,24 +712,22 @@ const CookingReport: React.FC = () => {
                           </div>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'fixed', border: '1px solid #000' }}>
                             <thead>
-                              <tr style={{ backgroundColor: '#1a237e', color: 'white' }}>
+                              <tr style={{ background: (activeTab as string) === 'RICE_COOKING_REPORT' ? 'linear-gradient(135deg, #d35400, #a04000)' : 'linear-gradient(135deg, #1a237e, #0d47a1)', color: 'white' }}>
                                 <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '3%' }}>SL No</th>
-                                <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '3%' }}>Type</th>
+                                {(activeTab as string) !== 'RICE_COOKING_REPORT' && (
+                                  <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '3%' }}>Type</th>
+                                )}
                                 <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '4%' }}>Bags</th>
                                 <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '3%' }}>Pkg</th>
                                 <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', width: '14%' }}>Party Name</th>
-                                <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', width: '10%' }}>Paddy Location</th>
+                                <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '12px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>{(activeTab as string) === 'RICE_COOKING_REPORT' ? 'Rice Location' : 'Paddy Location'}</th>
                                 <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', width: '8%' }}>Variety</th>
                                 <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '6%' }}>Quality</th>
                                 <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '6%' }}>Sample Report By</th>
                                 <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '5%' }}>Grain</th>
                                 <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '8%' }}>Cooking Done by</th>
 
-                                {user?.role !== 'staff' && (
-                                  <>
-                                    <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '8%' }}>Cooking Apprvd By</th>
-                                  </>
-                                )}
+                                <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '8%' }}>Cooking Apprvd By</th>
                                 <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '8%' }}>Status</th>
 
                                 {canTakeAction && (
@@ -593,8 +736,8 @@ const CookingReport: React.FC = () => {
                               </tr>
                             </thead>
                             <tbody>
-                              {brokerEntries.map((entry) => {
-                                slNo++;
+                              {paddyEntries.map((entry, idx) => {
+                                const slNo = idx + 1;
 
                                 // Determine Quality Info (Pass)
                                 let objQuality: React.ReactNode = '-';
@@ -605,30 +748,30 @@ const CookingReport: React.FC = () => {
                                 return (
                                   <tr key={entry.id} style={{ backgroundColor: entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : entry.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff', }}>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '13px' }}>{slNo}</td>
-                                    <td style={{ border: '1px solid #000', padding: '1px 3px', textAlign: 'center', verticalAlign: 'middle' }}>
-                                      {entry.entryType === 'DIRECT_LOADED_VEHICLE' && <span style={{ color: 'white', backgroundColor: '#1565c0', padding: '1px 4px', borderRadius: '3px', fontSize: '12px', fontWeight: '800' }}>RL</span>}
-                                      {entry.entryType === 'LOCATION_SAMPLE' && <span style={{ color: 'white', backgroundColor: '#e67e22', padding: '1px 4px', borderRadius: '3px', fontSize: '12px', fontWeight: '800' }}>LS</span>}
-                                      {entry.entryType !== 'DIRECT_LOADED_VEHICLE' && entry.entryType !== 'LOCATION_SAMPLE' && <span style={{ color: '#333', backgroundColor: '#fff', padding: '1px 4px', borderRadius: '3px', fontSize: '12px', fontWeight: '800', border: '1px solid #ccc' }}>MS</span>}
-                                    </td>
+                                    {(activeTab as string) !== 'RICE_COOKING_REPORT' && (
+                                      <td style={{ border: '1px solid #000', padding: '1px 3px', textAlign: 'center', verticalAlign: 'middle' }}>
+                                        {entry.entryType === 'DIRECT_LOADED_VEHICLE' && <span style={{ color: 'white', backgroundColor: '#1565c0', padding: '1px 4px', borderRadius: '3px', fontSize: '12px', fontWeight: '800' }}>RL</span>}
+                                        {entry.entryType === 'LOCATION_SAMPLE' && <span style={{ color: 'white', backgroundColor: '#e67e22', padding: '1px 4px', borderRadius: '3px', fontSize: '12px', fontWeight: '800' }}>LS</span>}
+                                        {entry.entryType !== 'DIRECT_LOADED_VEHICLE' && entry.entryType !== 'LOCATION_SAMPLE' && <span style={{ color: '#333', backgroundColor: '#fff', padding: '1px 4px', borderRadius: '3px', fontSize: '12px', fontWeight: '800', border: '1px solid #ccc' }}>MS</span>}
+                                      </td>
+                                    )}
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '13px' }}>{entry.bags?.toLocaleString('en-IN') || '0'}</td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', textAlign: 'center' }}>{entry.packaging || '-'}</td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#1565c0' }}>{toTitleCase(entry.partyName)}{entry.entryType === 'DIRECT_LOADED_VEHICLE' && entry.lorryNumber ? <div style={{ fontSize: '13px', color: '#1565c0', fontWeight: '600' }}>{entry.lorryNumber.toUpperCase()}</div> : ''}</td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '13px' }}>{toTitleCase(entry.location) || '-'}</td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '13px' }}>{toTitleCase(entry.variety)}</td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '12px', fontWeight: '700' }}>{objQuality}</td>
-                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '12px', fontWeight: '600' }}>{entry.qualityParameters?.reportedBy || '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '12px', fontWeight: '600' }}>
+                                      {renderSampleReportByWithDate(entry)}
+                                    </td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '13px', fontWeight: '700', color: '#333' }}>{entry.qualityParameters?.grainsCount ? `(${entry.qualityParameters.grainsCount})` : '-'}</td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#6a1b9a' }}>
-                                      {renderCookingDoneByWithDate(entry.cookingReport, '')}
+                                      {renderCookingDoneByWithDate(entry, '')}
                                     </td>
 
-                                    {user?.role !== 'staff' && (
-                                      <>
-                                        <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#1565c0' }}>
-                                          {renderApprovedByWithDate(entry.cookingReport)}
-                                        </td>
-                                      </>
-                                    )}
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#1565c0' }}>
+                                      {renderApprovedByWithDate(entry)}
+                                    </td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '12px' }}>
                                       {getStatusBadge(entry)}
                                     </td>
@@ -684,33 +827,36 @@ const CookingReport: React.FC = () => {
             <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>No rice samples found</div>
           ) : (
             Object.entries(displayGrouped).map(([dateKey, brokerGroups]) => {
+              // Filter brokers that have at least one Rice entry
+              const visibleBrokers = Object.entries(brokerGroups)
+                .map(([bName, bEntries]) => ({
+                  name: bName,
+                  entries: bEntries.filter(e => e.entryType === 'RICE_SAMPLE')
+                }))
+                .filter(b => b.entries.length > 0)
+                .sort((a, b) => a.name.localeCompare(b.name));
+
+              if (visibleBrokers.length === 0) return null;
+
               let brokerSeq = 0;
-              // Check if this date has ANY rice entries before rendering the date block
-              const hasRiceForDate = Object.values(brokerGroups).some(entries =>
-                entries.some(e => e.entryType === 'RICE_SAMPLE')
-              );
-
-              if (!hasRiceForDate) return null;
-
               return (
                 <div key={dateKey} style={{ marginBottom: '20px' }}>
-                  {Object.entries(brokerGroups).sort(([a], [b]) => a.localeCompare(b)).map(([brokerName, brokerEntries], brokerIdx) => {
-                    const riceEntries = brokerEntries.filter(e => e.entryType === 'RICE_SAMPLE');
-                    if (riceEntries.length === 0) return null;
-
+                  {visibleBrokers.map((brokerGroup, vIdx) => {
                     brokerSeq++;
-                    let slNo = 0;
+                    const { name: brokerName, entries: riceEntries } = brokerGroup;
                     return (
                       <div key={brokerName} style={{ marginBottom: '0px' }}>
-                        {/* Date bar */}
-                        {brokerIdx === 0 && <div style={{
-                          background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
-                          color: 'white', padding: '6px 10px', fontWeight: '700', fontSize: '14px',
-                          textAlign: 'center', letterSpacing: '0.5px'
-                        }}>
-                          {(() => { const d = new Date(riceEntries[0]?.entryDate); return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`; })()}
-                          &nbsp;&nbsp;Rice Sample Cooking
-                        </div>}
+                        {/* Date bar — only first visible broker */}
+                        {vIdx === 0 && (
+                          <div style={{
+                            background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+                            color: 'white', padding: '6px 10px', fontWeight: '700', fontSize: '14px',
+                            textAlign: 'center', letterSpacing: '0.5px'
+                          }}>
+                            {(() => { const d = new Date(riceEntries[0]?.entryDate); return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`; })()}
+                            &nbsp;&nbsp;Rice Sample Cooking
+                          </div>
+                        )}
 
                         {/* Broker name bar */}
                         <div style={{
@@ -725,17 +871,15 @@ const CookingReport: React.FC = () => {
                           <thead>
                             <tr style={{ backgroundColor: '#1a237e', color: 'white' }}>
                               <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '3%' }}>SL No</th>
-                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '8%' }}>Qnty / Bags</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '6%' }}>Bags</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '6%' }}>Pkg</th>
                               <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', width: '16%' }}>Party Name</th>
                               <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', width: '12%' }}>Location</th>
-                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', width: '10%' }}>Variety</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', width: '8%' }}>Variety</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '10%' }}>Sample Report By</th>
                               <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '10%' }}>Cooking Done by</th>
 
-                              {user?.role !== 'staff' && (
-                                <>
-                                  <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '10%' }}>Cooking Apprvd By</th>
-                                </>
-                              )}
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '10%' }}>Cooking Apprvd By</th>
                               <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', width: '8%' }}>Status</th>
 
                               {canTakeAction && (
@@ -744,29 +888,32 @@ const CookingReport: React.FC = () => {
                             </tr>
                           </thead>
                           <tbody>
-                            {riceEntries.map((entry) => {
-                              slNo++;
+                            {riceEntries.map((entry, idx) => {
+                              const slNo = idx + 1;
                               return (
                                 <tr key={entry.id}>
                                   <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '13px' }}>{slNo}</td>
-                                  <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '700', fontSize: '13px', color: '#1565c0' }}>
-                                    {entry.bags?.toLocaleString('en-IN') || '0'}
-                                    {entry.packaging === 'Tons' ? ' Tons' : `/${entry.packaging || '-'}`}
-                                  </td>
+                                  <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '700', fontSize: '13px', color: '#1565c0' }}>{entry.bags?.toLocaleString('en-IN') || '0'}</td>
+                                  <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '11px' }}>{(() => {
+                                    let pkg = String(entry.packaging || '75');
+                                    if (pkg.toLowerCase() === '0' || pkg.toLowerCase() === 'loose') return 'Loose';
+                                    if (pkg.toLowerCase().includes('kg')) return pkg;
+                                    if (pkg.toLowerCase().includes('tons')) return pkg;
+                                    return `${pkg} kg`;
+                                  })()}</td>
                                   <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#1565c0' }}>{toTitleCase(entry.partyName)}</td>
                                   <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '13px' }}>{toTitleCase(entry.location) || '-'}</td>
                                   <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '13px' }}>{toTitleCase(entry.variety)}</td>
+                                  <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '12px', fontWeight: '600' }}>
+                                    {renderSampleReportByWithDate(entry)}
+                                  </td>
                                   <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#6a1b9a' }}>
-                                    {renderCookingDoneByWithDate(entry.cookingReport, '')}
+                                    {renderCookingDoneByWithDate(entry, '')}
                                   </td>
 
-                                  {user?.role !== 'staff' && (
-                                    <>
-                                      <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#1565c0' }}>
-                                        {renderApprovedByWithDate(entry.cookingReport)}
-                                      </td>
-                                    </>
-                                  )}
+                                  <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#1565c0' }}>
+                                    {renderApprovedByWithDate(entry)}
+                                  </td>
                                   <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '12px' }}>
                                     {getStatusBadge(entry)}
                                   </td>

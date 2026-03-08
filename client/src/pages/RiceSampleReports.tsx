@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import AdminSampleBook2 from './AdminSampleBook2';
-import AssigningSupervisor from './AssigningSupervisor';
-import AllottedSupervisors from './AllottedSupervisors';
-import LoadingLots from './LoadingLots';
-import CompletedLots from './CompletedLots';
-import SampleEntryPage from './SampleEntry';
 import LotSelection from './LotSelection';
 import CookingReport from './CookingReport';
 import FinalReport from './FinalReport';
+import LoadingLots from './LoadingLots';
+import CompletedLots from './CompletedLots';
+import AdminSampleBook2 from './AdminSampleBook2';
+import SampleEntryPage from './SampleEntry';
 
-type TabKey = 'paddy-samples' | 'pending-lots' | 'cooking-report' | 'lots-passed' | 'loading-lots' | 'completed-lots' | 'sample-book-2' | 'assigning-supervisor' | 'allotted-supervisors';
+type TabKey = 'rice-samples' | 'pending-lots' | 'cooking-report' | 'lots-passed' | 'loading-lots' | 'completed-lots' | 'sample-book-2';
 
 interface TabConfig {
     key: TabKey;
@@ -19,22 +17,20 @@ interface TabConfig {
 }
 
 const tabs: TabConfig[] = [
-    { key: 'paddy-samples', label: 'Paddy Sample Records', icon: '🌾', color: '#2e7d32' },
-    { key: 'sample-book-2', label: 'Sample Book', icon: '📗', color: '#1565c0' },
+    { key: 'rice-samples', label: 'Rice Sample Records', icon: '🍚', color: '#2e7d32' },
+    { key: 'sample-book-2', label: 'Rice Sample Book', icon: '📓', color: '#1565c0' },
     { key: 'pending-lots', label: 'Pending (Sample Selection)', icon: '📋', color: '#3498db' },
     { key: 'cooking-report', label: 'Cooking Book', icon: '🍚', color: '#e67e22' },
     { key: 'lots-passed', label: 'Final Pass Lots', icon: '✅', color: '#27ae60' },
     { key: 'loading-lots', label: 'Loading Lots', icon: '🚚', color: '#f39c12' },
-    { key: 'assigning-supervisor', label: 'Assigning (Loading)', icon: '👷', color: '#d35400' },
-    { key: 'allotted-supervisors', label: 'Allotted Supervisors', icon: '💂', color: '#2980b9' },
     { key: 'completed-lots', label: 'Completed Lots', icon: '📦', color: '#e74c3c' },
 ];
 
-const ManagerSampleReports: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<TabKey>('paddy-samples');
+const RiceSampleReports: React.FC = () => {
+    const [activeTab, setActiveTab] = useState<TabKey>('rice-samples');
 
     useEffect(() => {
-        document.title = 'Manager Reports - Kushi Agro Foods';
+        document.title = 'Rice Sample Reports - Kushi Agro Foods';
     }, []);
 
     return (
@@ -58,7 +54,7 @@ const ManagerSampleReports: React.FC = () => {
                     fontWeight: '700',
                     letterSpacing: '0.5px'
                 }}>
-                    📊 MANAGER SAMPLE RECORDS
+                    📊 RICE SAMPLE RECORDS
                 </h2>
             </div>
 
@@ -108,18 +104,16 @@ const ManagerSampleReports: React.FC = () => {
                 width: '100%',
                 boxSizing: 'border-box'
             }}>
-                {activeTab === 'paddy-samples' && <SampleEntryPage excludeEntryType="RICE_SAMPLE" />}
-                {activeTab === 'pending-lots' && <LotSelection excludeEntryType="RICE_SAMPLE" />}
-                {activeTab === 'cooking-report' && <CookingReport excludeEntryType="RICE_SAMPLE" />}
-                {activeTab === 'lots-passed' && <FinalReport excludeEntryType="RICE_SAMPLE" />}
-                {activeTab === 'loading-lots' && <LoadingLots excludeEntryType="RICE_SAMPLE" />}
-                {activeTab === 'completed-lots' && <CompletedLots excludeEntryType="RICE_SAMPLE" />}
-                {activeTab === 'sample-book-2' && <AdminSampleBook2 excludeEntryType="RICE_SAMPLE" />}
-                {activeTab === 'assigning-supervisor' && <AssigningSupervisor />}
-                {activeTab === 'allotted-supervisors' && <AllottedSupervisors />}
+                {activeTab === 'rice-samples' && <SampleEntryPage filterEntryType="RICE_SAMPLE" />}
+                {activeTab === 'pending-lots' && <LotSelection entryType="RICE_SAMPLE" />}
+                {activeTab === 'cooking-report' && <CookingReport entryType="RICE_SAMPLE" />}
+                {activeTab === 'lots-passed' && <FinalReport entryType="RICE_SAMPLE" />}
+                {activeTab === 'loading-lots' && <LoadingLots entryType="RICE_SAMPLE" />}
+                {activeTab === 'completed-lots' && <CompletedLots entryType="RICE_SAMPLE" />}
+                {activeTab === 'sample-book-2' && <AdminSampleBook2 entryType="RICE_SAMPLE" />}
             </div>
         </div>
     );
 };
 
-export default ManagerSampleReports;
+export default RiceSampleReports;

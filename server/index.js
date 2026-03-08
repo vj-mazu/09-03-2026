@@ -848,6 +848,15 @@ const startServer = async () => {
         console.log('⚠️ Migration 56 warning:', error.message);
       }
 
+      // Migration 56.5: Add grams_report to quality_parameters
+      try {
+        const addGramsReportToQuality = require('./migrations/add_grams_report_to_quality');
+        await addGramsReportToQuality();
+        console.log('✅ Migration 56.5: grams_report column added');
+      } catch (error) {
+        console.log('⚠️ Migration 56.5 warning:', error.message);
+      }
+
       // Migration 57: Add source_bags column to rice_stock_movements
       // Stores original source bags separately for Palti operations (30kg → 26kg conversions)
       try {
@@ -1454,6 +1463,24 @@ const startServer = async () => {
         console.log('✅ Migration 104: RICE_SAMPLE added to entry_type enum');
       } catch (error) {
         console.log('⚠️ Migration 104 warning:', error.message);
+      }
+
+      // Migration 105: Add SOLDOUT to lot_selection_decision ENUM
+      try {
+        const addSoldOutToDecision = require('./migrations/105_add_soldout_to_lot_selection_decision');
+        await addSoldOutToDecision.up(sequelize.getQueryInterface(), sequelize.Sequelize);
+        console.log('✅ Migration 105: SOLDOUT added to lot_selection_decision enum');
+      } catch (error) {
+        console.log('⚠️ Migration 105 warning:', error.message);
+      }
+
+      // Migration 106: Add serial_no to sample_entries table
+      try {
+        const addSerialNo = require('./migrations/106_add_serial_no_to_sample_entries');
+        await addSerialNo.up(sequelize.getQueryInterface(), sequelize.Sequelize);
+        console.log('✅ Migration 106: serial_no added to sample_entries');
+      } catch (error) {
+        console.log('⚠️ Migration 106 warning:', error.message);
       }
 
       console.log('✅ All migrations + indexes completed.');

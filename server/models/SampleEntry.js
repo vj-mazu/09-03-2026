@@ -126,7 +126,7 @@ const SampleEntry = sequelize.define('SampleEntry', {
     field: 'final_price'
   },
   lotSelectionDecision: {
-    type: DataTypes.ENUM('PASS_WITHOUT_COOKING', 'PASS_WITH_COOKING', 'FAIL'),
+    type: DataTypes.ENUM('PASS_WITHOUT_COOKING', 'PASS_WITH_COOKING', 'FAIL', 'SOLDOUT'),
     allowNull: true,
     field: 'lot_selection_decision'
   },
@@ -143,6 +143,12 @@ const SampleEntry = sequelize.define('SampleEntry', {
     type: DataTypes.DATE,
     allowNull: true,
     field: 'lot_selection_at'
+  },
+  serialNo: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    autoIncrement: true,
+    field: 'serial_no'
   }
 }, {
   tableName: 'sample_entries',

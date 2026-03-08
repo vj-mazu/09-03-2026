@@ -118,6 +118,11 @@ const QualityParameters = sequelize.define('QualityParameters', {
       min: 0
     }
   },
+  gramsReport: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    field: 'grams_report'
+  },
   wbR: {
     type: DataTypes.DECIMAL(5, 2),
     allowNull: true,

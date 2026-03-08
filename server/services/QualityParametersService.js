@@ -1,4 +1,5 @@
 const QualityParametersRepository = require('../repositories/QualityParametersRepository');
+const SampleEntryRepository = require('../repositories/SampleEntryRepository');
 const ValidationService = require('./ValidationService');
 const AuditService = require('./AuditService');
 const WorkflowEngine = require('./WorkflowEngine');
@@ -28,15 +29,22 @@ class QualityParametersService {
       // Log audit trail
       await AuditService.logCreate(userId, 'quality_parameters', quality.id, quality);
 
-      // Transition workflow to QUALITY_CHECK (from STAFF_ENTRY) — for both 100-gms and full quality saves
-      // so that 100-gms entries also appear in Pending (Sample Selection)
-      await WorkflowEngine.transitionTo(
-        qualityData.sampleEntryId,
-        'QUALITY_CHECK',
-        userId,
-        userRole,
-        { qualityParametersId: quality.id }
-      );
+      // Fetch the sample entry to check its status
+      const sampleEntry = await SampleEntryRepository.findById(qualityData.sampleEntryId);
+
+      // Transition workflow to QUALITY_CHECK (from STAFF_ENTRY) ONLY if it's currently at STAFF_ENTRY
+      // Rice samples skip quality check and go straight to cooking report
+      if (sampleEntry && sampleEntry.workflowStatus === 'STAFF_ENTRY') {
+        await WorkflowEngine.transitionTo(
+          qualityData.sampleEntryId,
+          'QUALITY_CHECK',
+          userId,
+          userRole,
+          { qualityParametersId: quality.id }
+        );
+      } else {
+        console.log(`[QUALITY] Skipping transition for ${qualityData.sampleEntryId}: current status is ${sampleEntry?.workflowStatus}`);
+      }
 
       return quality;
 
@@ -91,13 +99,17 @@ class QualityParametersService {
       // If upgrading from 100g to full quality (is100Grams=false), transition workflow
       if (!updates.is100Grams && userRole) {
         try {
-          await WorkflowEngine.transitionTo(
-            updates.sampleEntryId,
-            'QUALITY_CHECK',
-            userId,
-            userRole,
-            { qualityParametersId: id }
-          );
+          // Fetch entry to check status before transitioning
+          const sampleEntry = await SampleEntryRepository.findById(updates.sampleEntryId);
+          if (sampleEntry && sampleEntry.workflowStatus === 'STAFF_ENTRY') {
+            await WorkflowEngine.transitionTo(
+              updates.sampleEntryId,
+              'QUALITY_CHECK',
+              userId,
+              userRole,
+              { qualityParametersId: id }
+            );
+          }
         } catch (wfErr) {
           // Workflow transition may fail if already at QUALITY_CHECK or beyond — that's ok
           console.log('Workflow transition note:', wfErr.message);

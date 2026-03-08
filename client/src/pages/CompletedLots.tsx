@@ -23,7 +23,12 @@ const toTitleCase = (str: string) => {
     return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
 };
 
-const CompletedLots: React.FC = () => {
+interface CompletedLotsProps {
+    entryType?: string;
+    excludeEntryType?: string;
+}
+
+const CompletedLots: React.FC<CompletedLotsProps> = ({ entryType, excludeEntryType }) => {
     const [entries, setEntries] = useState<SampleEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const [total, setTotal] = useState(0);
@@ -42,6 +47,8 @@ const CompletedLots: React.FC = () => {
             if (filters.location) params.location = filters.location;
             if (filters.startDate) params.startDate = filters.startDate;
             if (filters.endDate) params.endDate = filters.endDate;
+            if (entryType) params.entryType = entryType;
+            if (excludeEntryType) params.excludeEntryType = excludeEntryType;
 
             const res = await axios.get('/sample-entries/tabs/completed-lots', { params });
             const data = res.data as { entries: SampleEntry[]; total: number };
@@ -87,7 +94,7 @@ const CompletedLots: React.FC = () => {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                     <thead>
                         <tr style={{ background: 'linear-gradient(135deg, #e67e22, #f39c12)', color: 'white' }}>
-                            {['Date', 'SL No', 'Broker', 'Bags', 'Pkg', 'Variety', 'Party', 'Location', 'Status', 'Offer Rate', 'Final Price'].map(h => (
+                            {['Date', 'SL No', 'Broker', 'Bags', 'Pkg', 'Variety', 'Party', entryType === 'RICE_SAMPLE' ? 'Rice Location' : 'Location', 'Status', 'Offer Rate', 'Final Price'].map(h => (
                                 <th key={h} style={{ padding: '10px 8px', textAlign: 'left', fontWeight: '600', whiteSpace: 'nowrap' }}>{h}</th>
                             ))}
                         </tr>

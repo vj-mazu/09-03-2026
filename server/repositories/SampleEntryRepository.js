@@ -192,9 +192,24 @@ class SampleEntryRepository {
       // Only show entries currently pending cooking reports (or in RECHECK which stays in COOKING_REPORT status)
       where.workflowStatus = 'COOKING_REPORT';
     } else if (filters.status) {
-      where.workflowStatus = filters.status;
+      // Special case: For Rice Samples, they skip QUALITY_CHECK and go straight to COOKING_REPORT or LOT_SELECTION based on the old flow.
+      // If we are looking for 'QUALITY_CHECK' (which is the status for LotSelection.tsx), and we are looking for RICE_SAMPLE, 
+      // we need to show them even if they are in COOKING_REPORT.
+      if (filters.status === 'QUALITY_CHECK' && filters.entryType === 'RICE_SAMPLE') {
+        where.workflowStatus = {
+          [Op.in]: ['QUALITY_CHECK', 'COOKING_REPORT']
+        };
+      } else {
+        where.workflowStatus = filters.status;
+      }
     } else if (roleStatusMap[role] !== null && roleStatusMap[role]) {
       where.workflowStatus = roleStatusMap[role];
+    }
+
+    if (filters.entryType) {
+      where.entryType = filters.entryType;
+    } else if (filters.excludeEntryType) {
+      where.entryType = { [Op.ne]: filters.excludeEntryType };
     }
 
     if (filters.startDate || filters.endDate) {
@@ -214,12 +229,12 @@ class SampleEntryRepository {
     // Determine the actual statuses to query for include building
     const statusesToInclude = filters.status === 'COOKING_BOOK'
       ? ['COOKING_REPORT']
-      : (activeStatus ? [activeStatus] : []);
+      : (filters.status === 'QUALITY_CHECK' && filters.entryType === 'RICE_SAMPLE' ? ['QUALITY_CHECK', 'COOKING_REPORT'] : (activeStatus ? [activeStatus] : []));
 
     const include = this._buildIncludesForRole(role, statusesToInclude.length > 0 ? statusesToInclude[0] : null);
 
-    // Make sure cooking report is included for COOKING_BOOK (but not required, so pending entries show up)
-    if (filters.status === 'COOKING_BOOK') {
+    // Make sure cooking report is included for COOKING_BOOK or for RICE_SAMPLE in LOT_SELECTION (PENDING SELECTION) tab.
+    if (filters.status === 'COOKING_BOOK' || (filters.status === 'QUALITY_CHECK' && filters.entryType === 'RICE_SAMPLE')) {
       const crInclude = include.find(i => i.as === 'cookingReport');
       if (!crInclude) {
         const { CookingReport } = require('../models');

@@ -236,7 +236,8 @@ const SampleEntryLedger: React.FC = () => {
       const response = await sampleEntryApi.getSampleEntryLedger({
         ...filters,
         page: currentPage,
-        pageSize: effectivePageSize
+        pageSize: effectivePageSize,
+        excludeEntryType: 'RICE_SAMPLE'
       });
       // The API now returns { entries, total, page, pageSize }
       const data = response.data as any;

@@ -104,13 +104,13 @@ const OwnerSampleReports: React.FC = () => {
         width: '100%',
         boxSizing: 'border-box'
       }}>
-        {activeTab === 'paddy-samples' && <SampleEntryPage />}
-        {activeTab === 'pending-lots' && <LotSelection />}
-        {activeTab === 'cooking-report' && <CookingReport />}
-        {activeTab === 'lots-passed' && <FinalReport />}
-        {activeTab === 'loading-lots' && <LoadingLots />}
-        {activeTab === 'completed-lots' && <CompletedLots />}
-        {activeTab === 'sample-book-2' && <AdminSampleBook2 />}
+        {activeTab === 'paddy-samples' && <SampleEntryPage excludeEntryType="RICE_SAMPLE" />}
+        {activeTab === 'pending-lots' && <LotSelection excludeEntryType="RICE_SAMPLE" />}
+        {activeTab === 'cooking-report' && <CookingReport excludeEntryType="RICE_SAMPLE" />}
+        {activeTab === 'lots-passed' && <FinalReport excludeEntryType="RICE_SAMPLE" />}
+        {activeTab === 'loading-lots' && <LoadingLots excludeEntryType="RICE_SAMPLE" />}
+        {activeTab === 'completed-lots' && <CompletedLots excludeEntryType="RICE_SAMPLE" />}
+        {activeTab === 'sample-book-2' && <AdminSampleBook2 excludeEntryType="RICE_SAMPLE" />}
       </div>
     </div>
   );

@@ -35,7 +35,7 @@ export interface SampleEntry {
   location: string;
   bags: number;
   lorryNumber?: string;
-  packaging?: '75' | '40';
+  packaging?: '75' | '40' | '26 kg' | '50 kg' | 'Tons' | 'Loose';
   sampleCollectedBy?: string;
   sampleGivenToOffice?: boolean;
   workflowStatus: WorkflowStatus;
@@ -202,4 +202,6 @@ export interface SampleEntryFilters {
   offset?: number;
   page?: number;
   pageSize?: number;
+  entryType?: string;
+  excludeEntryType?: string;
 }

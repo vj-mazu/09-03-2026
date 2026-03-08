@@ -89,7 +89,12 @@ const dataCellStyle: React.CSSProperties = { padding: '6px', fontSize: '11px', w
 
 const toTitleCase = (str: string) => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : '';
 
-const FinalReport: React.FC = () => {
+interface FinalReportProps {
+  entryType?: string;
+  excludeEntryType?: string;
+}
+
+const FinalReport: React.FC<FinalReportProps> = ({ entryType, excludeEntryType }) => {
   const { user } = useAuth();
   const { showNotification } = useNotification();
   const [entries, setEntries] = useState<SampleEntry[]>([]);
@@ -188,6 +193,9 @@ const FinalReport: React.FC = () => {
       if (v) params.variety = v;
       if (dFrom) params.startDate = dFrom;
       if (dTo) params.endDate = dTo;
+      if (entryType) params.entryType = entryType;
+      if (excludeEntryType) params.excludeEntryType = excludeEntryType;
+
       const response = await axios.get(`${API_URL}/sample-entries/by-role`, {
         params,
         headers: { Authorization: `Bearer ${token}` }
@@ -592,7 +600,7 @@ const FinalReport: React.FC = () => {
                             <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Bags</th>
                             <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Pkg</th>
                             <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>Party Name</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>Paddy Location</th>
+                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>{entryType === 'RICE_SAMPLE' ? 'Rice Location' : 'Paddy Location'}</th>
                             <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '9%' }}>Variety</th>
                             <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '22%' }}>Offering Details</th>
                             <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '22%' }}>Final Price</th>

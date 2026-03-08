@@ -36,7 +36,12 @@ const fmtVal = (val: any, unit?: string) => {
 
 const toTitleCase = (str: string) => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : '';
 
-const LoadingLots: React.FC = () => {
+interface LoadingLotsProps {
+    entryType?: string;
+    excludeEntryType?: string;
+}
+
+const LoadingLots: React.FC<LoadingLotsProps> = ({ entryType, excludeEntryType }) => {
     const { user } = useAuth();
     const { showNotification } = useNotification();
     const [entries, setEntries] = useState<SampleEntry[]>([]);
@@ -70,6 +75,8 @@ const LoadingLots: React.FC = () => {
             if (filters.location) params.location = filters.location;
             if (filters.startDate) params.startDate = filters.startDate;
             if (filters.endDate) params.endDate = filters.endDate;
+            if (entryType) params.entryType = entryType;
+            if (excludeEntryType) params.excludeEntryType = excludeEntryType;
 
             const token = localStorage.getItem('token');
             const res = await axios.get(`${API_URL}/sample-entries/tabs/loading-lots`, {
@@ -244,7 +251,7 @@ const LoadingLots: React.FC = () => {
                                             textAlign: 'center', letterSpacing: '0.5px'
                                         }}>
                                             {(() => { const d = new Date(brokerEntries[0]?.entryDate); return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`; })()}
-                                            &nbsp;&nbsp;Paddy Sample
+                                            &nbsp;&nbsp;{entryType === 'RICE_SAMPLE' ? 'Rice Sample' : 'Paddy Sample'}
                                         </div>}
                                         {/* Broker name bar */}
                                         <div style={{
@@ -257,7 +264,7 @@ const LoadingLots: React.FC = () => {
                                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'fixed', border: '1px solid #000' }}>
                                             <thead>
                                                 <tr style={{ backgroundColor: '#1a237e', color: 'white', }}>
-                                                    {['SL', 'Type', 'Bags', 'Pkg', 'Party Name', 'Paddy Location', 'Variety', 'Final Rate', 'Sute', 'Mst%', 'Hamali', 'Bkrg', 'LF', 'Status', 'Action'].map(h => (
+                                                    {['SL', 'Type', 'Bags', 'Pkg', 'Party Name', entryType === 'RICE_SAMPLE' ? 'Rice Location' : 'Paddy Location', 'Variety', 'Final Rate', 'Sute', 'Mst%', 'Hamali', 'Bkrg', 'LF', 'Status', 'Action'].map(h => (
                                                         <th key={h} style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontWeight: '600', whiteSpace: 'nowrap', fontSize: '12px' }}>{h}</th>
                                                     ))}
                                                 </tr>

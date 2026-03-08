@@ -7,7 +7,9 @@ import { API_URL } from '../config/api';
 
 interface SampleEntry {
   id: string;
+  serialNo?: number;
   entryDate: string;
+  createdAt: string;
   brokerName: string;
   variety: string;
   partyName: string;
@@ -43,12 +45,18 @@ interface SampleEntry {
 
 const toTitleCase = (str: string) => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : '';
 
-const LotSelection: React.FC = () => {
+interface LotSelectionProps {
+  entryType?: string;
+  excludeEntryType?: string;
+}
+
+const LotSelection: React.FC<LotSelectionProps> = ({ entryType, excludeEntryType }) => {
   const { showNotification } = useNotification();
   const [entries, setEntries] = useState<SampleEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [detailEntry, setDetailEntry] = useState<SampleEntry | null>(null);
+  const [remarksModalData, setRemarksModalData] = useState<{ isOpen: boolean, text: string }>({ isOpen: false, text: '' });
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -82,6 +90,9 @@ const LotSelection: React.FC = () => {
       if (dFrom) params.startDate = dFrom;
       if (dTo) params.endDate = dTo;
       if (b) params.broker = b;
+      if (entryType) params.entryType = entryType;
+      if (excludeEntryType) params.excludeEntryType = excludeEntryType;
+
       const response = await axios.get(`${API_URL}/sample-entries/by-role`, {
         params,
         headers: { Authorization: `Bearer ${token}` }
@@ -134,6 +145,8 @@ const LotSelection: React.FC = () => {
         message = 'Entry passed and moved to Cooking Report';
       } else if (decision === 'FAIL') {
         message = 'Entry marked as failed';
+      } else if (decision === 'SOLDOUT') {
+        message = 'Entry marked as sold out';
       }
 
       showNotification(message, 'success');
@@ -152,7 +165,12 @@ const LotSelection: React.FC = () => {
 
   // Group entries by date then broker (no client-side filtering — filters are server-side now)
   const groupedEntries = useMemo(() => {
-    const sorted = [...entries].sort((a, b) => new Date(b.entryDate).getTime() - new Date(a.entryDate).getTime());
+    const sorted = [...entries].sort((a, b) => {
+      const dateA = new Date(a.entryDate).getTime();
+      const dateB = new Date(b.entryDate).getTime();
+      if (dateA !== dateB) return dateB - dateA; // Primary sort: Date DESC
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(); // Secondary sort: CreatedAt ASC for stable Sl No
+    });
 
     const grouped: Record<string, Record<string, typeof sorted>> = {};
     sorted.forEach(entry => {
@@ -257,7 +275,7 @@ const LotSelection: React.FC = () => {
                         textAlign: 'center', letterSpacing: '0.5px'
                       }}>
                         {(() => { const d = new Date(brokerEntries[0]?.entryDate); return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`; })()}
-                        &nbsp;&nbsp;Paddy Sample
+                        &nbsp;&nbsp;{entryType === 'RICE_SAMPLE' ? 'Rice Sample' : 'Paddy Sample'}
                       </div>}
                       {/* Broker name bar */}
                       <div style={{
@@ -269,230 +287,277 @@ const LotSelection: React.FC = () => {
                       </div>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', tableLayout: 'fixed', border: '1px solid #000' }}>
                         <thead>
-                          <tr style={{ backgroundColor: '#1a237e', color: 'white' }}>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '2%' }}>SL No</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '2.5%' }}>Type</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>Bags</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '2.5%' }}>Pkg</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '9%' }}>Party Name</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '7%' }}>Paddy Location</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '6%' }}>Variety</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '7%' }}>Sample Collected By</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>Grain</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>Moist</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Cutting</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Bend</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3.5%' }}>Mix</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Oil/Kandu</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '2.5%' }}>SK</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>100 Gms</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3.5%' }}>Paddy WB</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '6%' }}>Sample Report By</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '8%' }}>Action</th>
-                          </tr>
+                          {entryType !== 'RICE_SAMPLE' ? (
+                            <tr style={{ backgroundColor: '#1a237e', color: 'white' }}>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '2%' }}>SL No</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '2.5%' }}>Type</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>Bags</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '2.5%' }}>Pkg</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '9%' }}>Party Name</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '7%' }}>Paddy Location</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '6%' }}>Variety</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '7%' }}>Sample Collected By</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>Grain</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>Moist</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Cutting</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Bend</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3.5%' }}>Mix</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Oil/Kandu</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '2.5%' }}>SK</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>100 Gms</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3.5%' }}>Paddy WB</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '6%' }}>Sample Report By</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '8%' }}>Action</th>
+                            </tr>
+                          ) : (
+                            <tr style={{ backgroundColor: '#4a148c', color: 'white' }}>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '2%' }}>SL No</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>Bags</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '2.5%' }}>Pkg</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '9%' }}>Party Name</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '7%' }}>Rice Location</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '6%' }}>Variety</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '7%' }}>Sample Collected By</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>Grain</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>Moist</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Rice</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Bendu</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3.5%' }}>Mix</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>Oil</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>Kandu</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>Broken</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'left', whiteSpace: 'nowrap', width: '6%' }}>Sample Report By</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '5%' }}>Cooking Status</th>
+                              <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', width: '6%' }}>Action</th>
+                            </tr>
+                          )}
                         </thead>
                         <tbody>
                           {brokerEntries.map((entry, index) => {
-                            slNo++;
+                            const displaySlNo = index + 1;
                             const qp = entry.qualityParameters;
                             const fmtVal = (v: any, forceDecimal = false, precision = 2) => {
-                              if (v == null || v === '') return '-';
+                              const fallback = entryType === 'RICE_SAMPLE' ? '--' : '-';
+                              if (v == null || v === '') return fallback;
                               const n = Number(v);
-                              if (isNaN(n) || n === 0) return '-';
+                              if (isNaN(n) || n === 0) return fallback;
                               if (forceDecimal) return n.toFixed(1);
                               if (precision > 2) return String(parseFloat(n.toFixed(precision)));
                               return n % 1 === 0 ? String(Math.round(n)) : String(parseFloat(n.toFixed(2)));
                             };
+                            const fallback = entryType === 'RICE_SAMPLE' ? '--' : '-';
                             const hasFullQuality = qp && ((qp.cutting1 && Number(qp.cutting1) !== 0) || (qp.bend1 && Number(qp.bend1) !== 0) || (qp.mix && Number(qp.mix) !== 0));
                             const has100Grams = qp && (qp.moisture != null || (qp as any).dryMoisture != null) && !hasFullQuality;
                             return (
                               <tr key={entry.id} style={{ backgroundColor: entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : entry.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff' }}>
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontWeight: '600', fontSize: '12px' }}>{slNo}</td>
-                                <td style={{ border: '1px solid #000', padding: '1px 2px', textAlign: 'center', verticalAlign: 'middle' }}>
-                                  {entry.entryType === 'DIRECT_LOADED_VEHICLE' && <span style={{ color: 'white', backgroundColor: '#1565c0', padding: '1px 3px', borderRadius: '3px', fontSize: '10px', fontWeight: '800' }}>RL</span>}
-                                  {entry.entryType === 'LOCATION_SAMPLE' && <span style={{ color: 'white', backgroundColor: '#e67e22', padding: '1px 3px', borderRadius: '3px', fontSize: '10px', fontWeight: '800' }}>LS</span>}
-                                  {entry.entryType !== 'DIRECT_LOADED_VEHICLE' && entry.entryType !== 'LOCATION_SAMPLE' && <span style={{ color: '#333', backgroundColor: '#fff', padding: '1px 3px', borderRadius: '3px', fontSize: '10px', fontWeight: '800', border: '1px solid #ccc' }}>MS</span>}
-                                </td>
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontWeight: '600', fontSize: '12px' }}>{entry.bags?.toLocaleString('en-IN') || '0'}</td>
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', verticalAlign: 'middle', fontSize: '11px', textAlign: 'center' }}>{entry.packaging || '75'} Kg</td>
-                                <td
-                                  style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                                >
-                                  <div style={{ color: '#333', fontWeight: '600' }}>
-                                    {toTitleCase(entry.partyName) || ''}
-                                  </div>
-                                  {entry.entryType === 'DIRECT_LOADED_VEHICLE' && entry.lorryNumber ? <div style={{ fontSize: '11px', color: '#555', fontWeight: '600' }}>{entry.lorryNumber.toUpperCase()}</div> : ''}
-                                </td>
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {toTitleCase(entry.location) || '-'}
-                                </td>
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {toTitleCase(entry.variety)}
-                                </td>
-                                {/* Sample Collected By */}
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {entry.sampleCollectedBy ? toTitleCase(entry.sampleCollectedBy) : (entry as any).creator?.username ? toTitleCase((entry as any).creator.username) : '-'}
-                                </td>
-                                {/* Grain */}
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '12px', color: '#000' }}>
-                                  {qp?.grainsCount ? `(${fmtVal(qp.grainsCount)})` : '-'}
-                                </td>
-                                {/* Moist — show moisture % and dry moisture if exists */}
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
-                                  {qp && (fmtVal(qp.moisture) !== '-' || (qp as any).dryMoisture != null) ? (
-                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                                      {fmtVal((qp as any).dryMoisture) !== '-' && <div style={{ fontSize: '10px', color: '#e67e22', fontWeight: '800' }}>{fmtVal((qp as any).dryMoisture, false, 3)}%</div>}
-                                      <div>{fmtVal(qp.moisture, false, 3)}%</div>
-                                    </div>
-                                  ) : '-'}
-                                </td>
-                                {/* Cutting */}
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
-                                  {qp && (fmtVal(qp.cutting1) !== '-' || fmtVal(qp.cutting2) !== '-') ? `1×${fmtVal(qp.cutting2)}` : '-'}
-                                </td>
-                                {/* Bend */}
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
-                                  {qp && (fmtVal(qp.bend1) !== '-' || fmtVal(qp.bend2) !== '-') ? `1×${fmtVal(qp.bend2)}` : '-'}
-                                </td>
-                                {/* Mix — show Mix items in a vertical stack if S or L exist */}
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '10px' }}>
-                                  {qp && fmtVal(qp.mix) !== '-' ? (
-                                    (fmtVal(qp.mixS) !== '-' || fmtVal(qp.mixL) !== '-') ? (
-                                      <div style={{ display: 'inline-grid', gridTemplateColumns: '20px auto', alignItems: 'center', columnGap: '0px' }}>
-                                        {/* Total Mix row */}
-                                        <div style={{ gridColumn: '2', fontSize: '11px', fontWeight: '600', color: '#555', textAlign: 'left' }}>
-                                          {fmtVal(qp.mix)}
+                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontWeight: '600', fontSize: '12px' }}>{displaySlNo}</td>
+                                {entryType !== 'RICE_SAMPLE' ? (
+                                  <>
+                                    <td style={{ border: '1px solid #000', padding: '1px 2px', textAlign: 'center', verticalAlign: 'middle' }}>
+                                      {entry.entryType === 'DIRECT_LOADED_VEHICLE' && <span style={{ color: 'white', backgroundColor: '#1565c0', padding: '1px 3px', borderRadius: '3px', fontSize: '10px', fontWeight: '800' }}>RL</span>}
+                                      {entry.entryType === 'LOCATION_SAMPLE' && <span style={{ color: 'white', backgroundColor: '#e67e22', padding: '1px 3px', borderRadius: '3px', fontSize: '10px', fontWeight: '800' }}>LS</span>}
+                                      {entry.entryType !== 'DIRECT_LOADED_VEHICLE' && entry.entryType !== 'LOCATION_SAMPLE' && <span style={{ color: '#333', backgroundColor: '#fff', padding: '1px 3px', borderRadius: '3px', fontSize: '10px', fontWeight: '800', border: '1px solid #ccc' }}>MS</span>}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontWeight: '600', fontSize: '12px' }}>{entry.bags?.toLocaleString('en-IN') || '0'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', verticalAlign: 'middle', fontSize: '11px', textAlign: 'center' }}>
+                                      {/^\d+$/.test(String(entry.packaging || '75')) ? `${entry.packaging || '75'} Kg` : entry.packaging || '75'}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      <div style={{ color: '#333', fontWeight: '600' }}>{toTitleCase(entry.partyName) || ''}</div>
+                                      {entry.entryType === 'DIRECT_LOADED_VEHICLE' && entry.lorryNumber ? <div style={{ fontSize: '11px', color: '#555', fontWeight: '600' }}>{entry.lorryNumber.toUpperCase()}</div> : ''}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toTitleCase(entry.location) || '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toTitleCase(entry.variety)}</td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {entry.sampleCollectedBy ? toTitleCase(entry.sampleCollectedBy) : (entry as any).creator?.username ? toTitleCase((entry as any).creator.username) : '-'}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '12px', color: '#000' }}>{qp?.grainsCount ? `(${fmtVal(qp.grainsCount)})` : '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
+                                      {qp && (fmtVal(qp.moisture) !== '-' || (qp as any).dryMoisture != null) ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                          {fmtVal((qp as any).dryMoisture) !== '-' && <div style={{ fontSize: '10px', color: '#e67e22', fontWeight: '800' }}>{fmtVal((qp as any).dryMoisture, false, 3)}%</div>}
+                                          <div>{fmtVal(qp.moisture, false, 3)}%</div>
                                         </div>
-                                        {/* S-Mix row */}
-                                        {fmtVal(qp.mixS) !== '-' && (
-                                          <>
-                                            <div style={{ fontSize: '11px', color: '#000', textAlign: 'right', paddingRight: '2px' }}>S-</div>
-                                            <div style={{ fontSize: '11px', color: '#000', textAlign: 'left' }}>{fmtVal(qp.mixS)}</div>
-                                          </>
-                                        )}
-                                        {/* L-Mix row */}
-                                        {fmtVal(qp.mixL) !== '-' && (
-                                          <>
-                                            <div style={{ fontSize: '11px', color: '#000', textAlign: 'right', paddingRight: '2px' }}>L-</div>
-                                            <div style={{ fontSize: '11px', color: '#000', textAlign: 'left' }}>{fmtVal(qp.mixL)}</div>
-                                          </>
-                                        )}
+                                      ) : '-'}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
+                                      {qp && (fmtVal(qp.cutting1) !== '-' || fmtVal(qp.cutting2) !== '-') ? `1×${fmtVal(qp.cutting2)}` : '-'}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
+                                      {qp && (fmtVal(qp.bend1) !== '-' || fmtVal(qp.bend2) !== '-') ? `1×${fmtVal(qp.bend2)}` : '-'}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '10px' }}>
+                                      {qp && fmtVal(qp.mix) !== '-' ? (
+                                        (fmtVal(qp.mixS) !== '-' || fmtVal(qp.mixL) !== '-') ? (
+                                          <div style={{ display: 'inline-grid', gridTemplateColumns: '20px auto', alignItems: 'center', columnGap: '0px' }}>
+                                            <div style={{ gridColumn: '2', fontSize: '11px', fontWeight: '600', color: '#555', textAlign: 'left' }}>{fmtVal(qp.mix)}</div>
+                                            {fmtVal(qp.mixS) !== '-' && (
+                                              <><div style={{ fontSize: '11px', color: '#000', textAlign: 'right', paddingRight: '2px' }}>S-</div><div style={{ fontSize: '11px', color: '#000', textAlign: 'left' }}>{fmtVal(qp.mixS)}</div></>
+                                            )}
+                                            {fmtVal(qp.mixL) !== '-' && (
+                                              <><div style={{ fontSize: '11px', color: '#000', textAlign: 'right', paddingRight: '2px' }}>L-</div><div style={{ fontSize: '11px', color: '#000', textAlign: 'left' }}>{fmtVal(qp.mixL)}</div></>
+                                            )}
+                                          </div>
+                                        ) : <span style={{ fontWeight: '600', color: '#555' }}>{fmtVal(qp.mix)}</span>
+                                      ) : '-'}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
+                                      {qp && (fmtVal(qp.oil) !== '-' || fmtVal(qp.kandu) !== '-') ? <div>{[fmtVal(qp.oil), fmtVal(qp.kandu)].filter(v => v !== '-').join(' | ')}</div> : '-'}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '12px', fontWeight: '600' }}>{qp && fmtVal(qp.sk) !== '-' ? fmtVal(qp.sk) : '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '10px', fontWeight: '600', color: '#555' }}>
+                                      {qp && (fmtVal(qp.wbR) !== '-' || fmtVal(qp.wbBk) !== '-' || fmtVal(qp.wbT) !== '-') ? (
+                                        <div style={{ display: 'inline-grid', gridTemplateColumns: '22px auto', alignItems: 'center', columnGap: '0px' }}>
+                                          {fmtVal(qp.wbR) !== '-' && <><div style={{ textAlign: 'right', paddingRight: '2px' }}>R-</div><div style={{ textAlign: 'left' }}>{fmtVal(qp.wbR)}</div></>}
+                                          {fmtVal(qp.wbBk) !== '-' && <><div style={{ textAlign: 'right', paddingRight: '2px' }}>BK-</div><div style={{ textAlign: 'left' }}>{fmtVal(qp.wbBk)}</div></>}
+                                          {fmtVal(qp.wbT) !== '-' && <><div style={{ textAlign: 'right', paddingRight: '2px' }}>T-</div><div style={{ textAlign: 'left' }}>{fmtVal(qp.wbT)}</div></>}
+                                        </div>
+                                      ) : '-'}
+                                    </td>
+                                    <td style={{
+                                      border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '12px', fontWeight: '800',
+                                      color: qp && fmtVal(qp.paddyWb) !== '-' ? (Number(qp.paddyWb) < 50 ? '#d32f2f' : (Number(qp.paddyWb) <= 50.5 ? '#f39c12' : '#2e7d32')) : '#000'
+                                    }}>
+                                      {qp && fmtVal(qp.paddyWb) !== '-' ? `${fmtVal(qp.paddyWb)} gms` : '-'}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {qp?.reportedBy ? toTitleCase(qp.reportedBy) : '-'}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 2px', textAlign: 'center', verticalAlign: 'middle' }}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'stretch' }}>
+                                        <button onClick={() => handleDecision(entry.id, 'PASS_WITH_COOKING')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '4px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#28a745', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', boxShadow: '0 1px 2px rgba(0,0,0,0.2)', whiteSpace: 'nowrap' }}>
+                                          {isSubmitting ? '...' : <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}><span style={{ fontSize: '12px' }}>🍲</span> Pass for Cook</span>}
+                                        </button>
+                                        <button onClick={() => handleDecision(entry.id, 'PASS_WITHOUT_COOKING')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '3px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#f39c12', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', whiteSpace: 'nowrap' }}>
+                                          {isSubmitting ? '...' : '✅ Pass'}
+                                        </button>
+                                        <button onClick={() => handleDecision(entry.id, 'FAIL')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '3px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#d9534f', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', whiteSpace: 'nowrap' }}>
+                                          {isSubmitting ? '...' : '❌ Fail'}
+                                        </button>
                                       </div>
-                                    ) : <span style={{ fontWeight: '600', color: '#555' }}>{fmtVal(qp.mix)}</span>
-                                  ) : '-'}
-                                </td>
-                                {/* Oil/Kandu */}
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
-                                  {qp && (fmtVal(qp.oil) !== '-' || fmtVal(qp.kandu) !== '-') ? (
-                                    <div>{[fmtVal(qp.oil), fmtVal(qp.kandu)].filter(v => v !== '-').join(' | ')}</div>
-                                  ) : '-'}
-                                </td>
-                                {/* SK */}
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '12px', fontWeight: '600' }}>
-                                  {qp && fmtVal(qp.sk) !== '-' ? fmtVal(qp.sk) : '-'}
-                                </td>
-                                {/* 100 Gms — show vertical stack, normal weight, aligned numbers */}
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '10px', fontWeight: '600', color: '#555' }}>
-                                  {qp && (fmtVal(qp.wbR) !== '-' || fmtVal(qp.wbBk) !== '-' || fmtVal(qp.wbT) !== '-') ? (
-                                    <div style={{ display: 'inline-grid', gridTemplateColumns: '22px auto', alignItems: 'center', columnGap: '0px' }}>
-                                      {fmtVal(qp.wbR) !== '-' && (
-                                        <>
-                                          <div style={{ textAlign: 'right', paddingRight: '2px' }}>R-</div>
-                                          <div style={{ textAlign: 'left' }}>{fmtVal(qp.wbR)}</div>
-                                        </>
-                                      )}
-                                      {fmtVal(qp.wbBk) !== '-' && (
-                                        <>
-                                          <div style={{ textAlign: 'right', paddingRight: '2px' }}>BK-</div>
-                                          <div style={{ textAlign: 'left' }}>{fmtVal(qp.wbBk)}</div>
-                                        </>
-                                      )}
-                                      {fmtVal(qp.wbT) !== '-' && (
-                                        <>
-                                          <div style={{ textAlign: 'right', paddingRight: '2px' }}>T-</div>
-                                          <div style={{ textAlign: 'left' }}>{fmtVal(qp.wbT)}</div>
-                                        </>
-                                      )}
-                                    </div>
-                                  ) : '-'}
-                                </td>
-                                {/* Paddy WB — bold removed and add gms */}
-                                <td style={{
-                                  border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '12px',
-                                  fontWeight: '800',
-                                  color: qp && fmtVal(qp.paddyWb) !== '-' ? (
-                                    Number(qp.paddyWb) < 50 ? '#d32f2f' : (Number(qp.paddyWb) <= 50.5 ? '#f39c12' : '#2e7d32')
-                                  ) : '#000'
-                                }}>
-                                  {qp && fmtVal(qp.paddyWb) !== '-' ? `${fmtVal(qp.paddyWb)} gms` : '-'}
-                                </td>
-                                {/* Sample Report By */}
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {qp?.reportedBy ? toTitleCase(qp.reportedBy) : '-'}
-                                </td>
-                                {/* Action — vertical stacked buttons */}
-                                <td style={{ border: '1px solid #000', padding: '2px 2px', textAlign: 'center', verticalAlign: 'middle' }}>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'stretch' }}>
-                                    <button
-                                      onClick={() => handleDecision(entry.id, 'PASS_WITH_COOKING')}
-                                      disabled={isSubmitting}
-                                      style={{
-                                        fontSize: '10px',
-                                        padding: '4px 6px',
-                                        backgroundColor: isSubmitting ? '#e0e0e0' : '#28a745',
-                                        color: isSubmitting ? '#999' : 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                        fontWeight: '800',
-                                        boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
-                                        whiteSpace: 'nowrap'
-                                      }}
-                                    >
-                                      {isSubmitting ? '...' : (
-                                        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                          <span style={{ fontSize: '12px' }}>🍲</span> Pass for Cook
-                                        </span>
-                                      )}
-                                    </button>
-                                    <button
-                                      onClick={() => handleDecision(entry.id, 'PASS_WITHOUT_COOKING')}
-                                      disabled={isSubmitting}
-                                      style={{
-                                        fontSize: '10px',
-                                        padding: '3px 6px',
-                                        backgroundColor: isSubmitting ? '#e0e0e0' : '#f39c12',
-                                        color: isSubmitting ? '#999' : 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                        fontWeight: '800',
-                                        boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                                        whiteSpace: 'nowrap'
-                                      }}
-                                    >
-                                      {isSubmitting ? '...' : '✅ Pass'}
-                                    </button>
-                                    <button
-                                      onClick={() => handleDecision(entry.id, 'FAIL')}
-                                      disabled={isSubmitting}
-                                      style={{
-                                        fontSize: '10px',
-                                        padding: '3px 6px',
-                                        backgroundColor: isSubmitting ? '#e0e0e0' : '#d9534f',
-                                        color: isSubmitting ? '#999' : 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                        fontWeight: '800',
-                                        boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                                        whiteSpace: 'nowrap'
-                                      }}
-                                    >
-                                      {isSubmitting ? '...' : '❌ Fail'}
-                                    </button>
-                                  </div>
-                                </td>
+                                    </td>
+                                  </>
+                                ) : (
+                                  <>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontWeight: '600', fontSize: '12px' }}>{entry.bags?.toLocaleString('en-IN') || '0'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', verticalAlign: 'middle', fontSize: '11px', textAlign: 'center' }}>
+                                      {/^\d+$/.test(String(entry.packaging || '26')) ? `${entry.packaging || '26'} Kg` : entry.packaging || '26'}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      <div style={{ color: '#333', fontWeight: '600' }}>{toTitleCase(entry.partyName) || ''}</div>
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toTitleCase(entry.location) || '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toTitleCase(entry.variety)}</td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {entry.sampleCollectedBy ? toTitleCase(entry.sampleCollectedBy) : (entry as any).creator?.username ? toTitleCase((entry as any).creator.username) : '-'}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '12px', color: '#000' }}>{qp?.grainsCount ? `(${fmtVal(qp.grainsCount)})` : fallback}</td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
+                                      {qp && (fmtVal(qp.moisture) !== fallback || (qp as any).dryMoisture != null) ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                          {fmtVal((qp as any).dryMoisture) !== fallback && <div style={{ fontSize: '10px', color: '#e67e22', fontWeight: '800' }}>{fmtVal((qp as any).dryMoisture, false, 3)}%</div>}
+                                          <div>{fmtVal(qp.moisture, false, 3)}%</div>
+                                        </div>
+                                      ) : fallback}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
+                                      {qp && fmtVal(qp.cutting1) !== fallback ? fmtVal(qp.cutting1) : fallback}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
+                                      {qp && fmtVal(qp.bend1) !== fallback ? fmtVal(qp.bend1) : fallback}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '10px' }}>
+                                      {qp && fmtVal(qp.mix) !== fallback ? (
+                                        (fmtVal(qp.mixS) !== fallback || fmtVal(qp.mixL) !== fallback) ? (
+                                          <div style={{ display: 'inline-grid', gridTemplateColumns: '20px auto', alignItems: 'center', columnGap: '0px' }}>
+                                            <div style={{ gridColumn: '2', fontSize: '11px', fontWeight: '600', color: '#555', textAlign: 'left' }}>{fmtVal(qp.mix)}</div>
+                                            {fmtVal(qp.mixS) !== fallback && (
+                                              <><div style={{ fontSize: '11px', color: '#000', textAlign: 'right', paddingRight: '2px' }}>S-</div><div style={{ fontSize: '11px', color: '#000', textAlign: 'left' }}>{fmtVal(qp.mixS)}</div></>
+                                            )}
+                                            {fmtVal(qp.mixL) !== fallback && (
+                                              <><div style={{ fontSize: '11px', color: '#000', textAlign: 'right', paddingRight: '2px' }}>L-</div><div style={{ fontSize: '11px', color: '#000', textAlign: 'left' }}>{fmtVal(qp.mixL)}</div></>
+                                            )}
+                                          </div>
+                                        ) : <span style={{ fontWeight: '600', color: '#555' }}>{fmtVal(qp.mix)}</span>
+                                      ) : fallback}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
+                                      {qp && fmtVal(qp.oil) !== fallback ? fmtVal(qp.oil) : fallback}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
+                                      {qp && fmtVal(qp.kandu) !== fallback ? fmtVal(qp.kandu) : fallback}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '12px', fontWeight: '600' }}>{qp && fmtVal(qp.sk) !== fallback ? fmtVal(qp.sk) : fallback}</td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {qp?.reportedBy ? toTitleCase(qp.reportedBy) : fallback}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
+                                      {(() => {
+                                        const cookingStatusData = (entry as any).cookingReport;
+                                        const decision = (entry as any).lotSelectionDecision;
+
+                                        if (decision === 'SOLDOUT') {
+                                          return <span style={{ color: '#800000', fontWeight: '800' }}>SOLD OUT</span>;
+                                        }
+
+                                        if (!cookingStatusData) return <span style={{ color: '#f39c12' }}>Pending</span>;
+
+                                        const status = (cookingStatusData.status || '').toUpperCase();
+                                        if (!status) return <span style={{ color: '#f39c12' }}>Pending</span>;
+
+                                        const badgeConfig = {
+                                          'PASS': { color: '#27ae60', label: 'Passed', icon: '✅' },
+                                          'FAIL': { color: '#c0392b', label: 'Failed', icon: '❌' },
+                                          'RECHECK': { color: '#e67e22', label: 'Recheck', icon: '📝' },
+                                          'MEDIUM': { color: '#2980b9', label: 'Medium', icon: '➖' },
+                                        };
+                                        const config = (badgeConfig as any)[status] || { color: '#7f8c8d', label: cookingStatusData.status || status, icon: '❔' };
+
+                                        return (
+                                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                            <span style={{ color: config.color }}>{config.icon} {config.label}</span>
+                                            {cookingStatusData.remarks && (
+                                              <button
+                                                type="button"
+                                                onClick={() => setRemarksModalData({ isOpen: true, text: cookingStatusData.remarks })}
+                                                style={{
+                                                  marginTop: '2px',
+                                                  fontSize: '9px',
+                                                  padding: '2px 6px',
+                                                  backgroundColor: '#f3e5f5',
+                                                  color: '#4a148c',
+                                                  border: '1px solid #ce93d8',
+                                                  borderRadius: '10px',
+                                                  cursor: 'pointer',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '2px',
+                                                  fontWeight: '700'
+                                                }}
+                                                title="View Remarks"
+                                              >
+                                                💬 Remarks
+                                              </button>
+                                            )}
+                                          </div>
+                                        );
+                                      })()}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 2px', textAlign: 'center', verticalAlign: 'middle' }}>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', justifyContent: 'center' }}>
+                                        <button onClick={() => handleDecision(entry.id, 'PASS_WITHOUT_COOKING')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '4px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#28a745', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', width: '48%', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
+                                          {isSubmitting ? '...' : 'Pass'}
+                                        </button>
+                                        <button onClick={() => handleDecision(entry.id, 'FAIL')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '4px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#d9534f', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', width: '48%', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+                                          {isSubmitting ? '...' : 'Fail'}
+                                        </button>
+                                        <button onClick={() => handleDecision(entry.id, 'SOLDOUT')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '4px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#800000', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', width: '100%', marginTop: '2px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+                                          {isSubmitting ? '...' : 'Sold Out'}
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </>
+                                )}
                               </tr>
                             );
                           })}
@@ -745,6 +810,46 @@ const LotSelection: React.FC = () => {
           </div>
         )
       }
+
+      {/* Remarks Modal */}
+      {remarksModalData.isOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 99999
+        }}>
+          <div style={{
+            backgroundColor: 'white', borderRadius: '8px', padding: '24px', width: '380px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: '16px', color: '#333', fontSize: '16px', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>
+              📝 Cooking Remarks
+            </h3>
+            <div style={{
+              marginBottom: '20px',
+              color: '#444',
+              fontSize: '14px',
+              lineHeight: '1.5',
+              maxHeight: '200px',
+              overflowY: 'auto',
+              padding: '10px',
+              backgroundColor: '#f9f9f9',
+              borderRadius: '4px',
+              border: '1px solid #e0e0e0'
+            }}>
+              {remarksModalData.text}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setRemarksModalData({ isOpen: false, text: '' })}
+                style={{ padding: '8px 20px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pagination Controls */}
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', padding: '16px 0', marginTop: '12px' }}>

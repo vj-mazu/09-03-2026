@@ -324,19 +324,22 @@ const Navbar: React.FC = () => {
           {user?.role !== 'staff' && <NavLink to="/dashboard" $active={isActive('/dashboard')}>Dashboard</NavLink>}
           {user && user.role === 'staff' && (
             <>
-              <NavLink to="/sample-entry" $active={isActive('/sample-entry')}>Sample Entry</NavLink>
+              <NavLink to="/sample-entry" $active={isActive('/sample-entry')}>Paddy Sample Entry</NavLink>
+              <NavLink to="/rice-sample-entries" $active={isActive('/rice-sample-entries')}>Rice Sample Entry</NavLink>
               <NavLink to="/cooking-book" $active={isActive('/cooking-book')}>Cooking Book</NavLink>
             </>
           )}
           {user && user.role === 'manager' && (
             <>
-              <NavLink to="/manager-sample-reports" $active={isActive('/manager-sample-reports')}>Loading Lots</NavLink>
-              <NavLink to="/sample-entry-ledger" $active={isActive('/sample-entry-ledger')}>Sample Book</NavLink>
+              <NavLink to="/manager-sample-reports" $active={isActive('/manager-sample-reports')}>Paddy Sample Reports</NavLink>
+              <NavLink to="/rice-sample-reports" $active={isActive('/rice-sample-reports')}>Rice Sample Reports</NavLink>
+              <NavLink to="/sample-entry-ledger" $active={isActive('/sample-entry-ledger')}>Paddy Sample Book</NavLink>
             </>
           )}
           {user && user.role === 'admin' && (
             <>
-              <NavLink to="/owner-sample-reports" $active={isActive('/owner-sample-reports')}>Owner Sample Reports</NavLink>
+              <NavLink to="/owner-sample-reports" $active={isActive('/owner-sample-reports')}>Paddy Sample Reports</NavLink>
+              <NavLink to="/rice-sample-reports" $active={isActive('/rice-sample-reports')}>Rice Sample Reports</NavLink>
               <NavLink to="/arrivals" $active={isActive('/arrivals')}>Arrivals</NavLink>
               <NavLink to="/records" $active={isActive('/records')}>Records</NavLink>
             </>
@@ -354,9 +357,9 @@ const Navbar: React.FC = () => {
               >Ledgers ▾</DropdownTrigger>
               {ledgersDropdownOpen && (
                 <DropdownMenu>
-                  <DropdownLink to="/sample-entry-ledger" $active={isActive('/sample-entry-ledger')}>Sample Book</DropdownLink>
+                  <DropdownLink to="/sample-entry-ledger" $active={isActive('/sample-entry-ledger')}>Paddy Sample Book</DropdownLink>
                   {user?.role === 'admin' && (
-                    <DropdownLink to="/owner-sample-reports" $active={isActive('/owner-sample-reports')}>Owner Sample Reports</DropdownLink>
+                    <DropdownLink to="/owner-sample-reports" $active={isActive('/owner-sample-reports')}>Paddy Sample Reports</DropdownLink>
                   )}
                   <DropdownLink to="/ledger" $active={isActive('/ledger')}>Kunchinittu Ledger</DropdownLink>
                   <DropdownLink to="/rice-ledger" $active={isActive('/rice-ledger')}>Rice Ledger</DropdownLink>
@@ -425,7 +428,7 @@ const Navbar: React.FC = () => {
                   {user.role === 'admin' && (
                     <>
                       <DropdownDivider />
-                      <DropdownLink to="/owner-sample-reports" $active={isActive('/owner-sample-reports')}>Owner Sample Reports</DropdownLink>
+                      <DropdownLink to="/owner-sample-reports" $active={isActive('/owner-sample-reports')}>Paddy Sample Reports</DropdownLink>
                     </>
                   )}
                 </DropdownMenu>
