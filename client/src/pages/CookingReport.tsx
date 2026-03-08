@@ -1140,9 +1140,9 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                           >
                             <option value="">-- Select Status --</option>
                             <option value="PASS">Pass</option>
-                            <option value="FAIL">Fail</option>
-                            <option value="RECHECK">Recheck</option>
                             <option value="MEDIUM">Medium</option>
+                            <option value="RECHECK">Recheck</option>
+                            <option value="FAIL">Fail</option>
                           </select>
                         </div>
                       </>
