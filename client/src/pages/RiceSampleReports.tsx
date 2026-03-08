@@ -4,7 +4,7 @@ import CookingReport from './CookingReport';
 import FinalReport from './FinalReport';
 import LoadingLots from './LoadingLots';
 import CompletedLots from './CompletedLots';
-import AdminSampleBook2 from './AdminSampleBook2';
+import RiceSampleBook from './RiceSampleBook';
 import SampleEntryPage from './SampleEntry';
 
 type TabKey = 'rice-samples' | 'pending-lots' | 'cooking-report' | 'lots-passed' | 'loading-lots' | 'completed-lots' | 'sample-book-2';
@@ -110,7 +110,7 @@ const RiceSampleReports: React.FC = () => {
                 {activeTab === 'lots-passed' && <FinalReport entryType="RICE_SAMPLE" />}
                 {activeTab === 'loading-lots' && <LoadingLots entryType="RICE_SAMPLE" />}
                 {activeTab === 'completed-lots' && <CompletedLots entryType="RICE_SAMPLE" />}
-                {activeTab === 'sample-book-2' && <AdminSampleBook2 entryType="RICE_SAMPLE" />}
+                {activeTab === 'sample-book-2' && <RiceSampleBook />}
             </div>
         </div>
     );

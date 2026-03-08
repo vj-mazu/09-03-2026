@@ -3,9 +3,8 @@ import axios from 'axios';
 import { API_URL } from '../config/api';
 
 /**
- * AdminSampleBook2 — Broker-Grouped Sample Book
- * Same data as AdminSampleBook but rendered in the staff-style
- * broker-grouped design (date bar → red broker bar → table).
+ * RiceSampleBook - broker-grouped Rice Sample Book screen.
+ * Dedicated rice implementation so paddy sample book logic remains isolated.
  */
 
 interface SampleEntry {
@@ -65,29 +64,8 @@ interface SampleEntry {
 }
 
 const toTitleCase = (str: string) => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : '';
-const formatShortDateTime = (value?: string | null) => {
-    if (!value) return '';
-    try {
-        return new Date(value).toLocaleString('en-GB', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-        });
-    } catch {
-        return '';
-    }
-};
-
-interface AdminSampleBook2Props {
-    entryType?: string;
-    excludeEntryType?: string;
-}
-
-const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeEntryType }) => {
-    const isRiceBook = entryType === 'RICE_SAMPLE';
+const RiceSampleBook: React.FC = () => {
+    const isRiceBook = true;
     const [entries, setEntries] = useState<SampleEntry[]>([]);
     const [loading, setLoading] = useState(false);
 
@@ -124,8 +102,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
             if (dFrom) params.startDate = dFrom;
             if (dTo) params.endDate = dTo;
             if (b) params.broker = b;
-            if (entryType) params.entryType = entryType;
-            if (excludeEntryType) params.excludeEntryType = excludeEntryType;
+            params.entryType = 'RICE_SAMPLE';
 
             const response = await axios.get(`${API_URL}/sample-entries/by-role`, {
                 params,
@@ -189,74 +166,23 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
     const cookingBadge = (entry: SampleEntry) => {
         const cr = entry.cookingReport;
         const d = entry.lotSelectionDecision;
-        const history = Array.isArray(cr?.history) ? cr!.history : [];
-        const latestEvent = history.length > 0 ? history[history.length - 1] : null;
-        const doneByFromHistory = [...history].reverse().find((h) => h?.cookingDoneBy)?.cookingDoneBy || '';
-        const approvedByFromHistory = [...history].reverse().find((h) => h?.approvedBy)?.approvedBy || '';
-        const doneBy = cr?.cookingDoneBy || doneByFromHistory || '';
-        const approvedBy = cr?.cookingApprovedBy || approvedByFromHistory || '';
-        const eventDate = formatShortDateTime((latestEvent as any)?.date || null);
-        const hasRemarks = !!(cr?.remarks && String(cr.remarks).trim());
+        const result = cr?.status?.toLowerCase();
 
-        // SOLD OUT decision
-        if (d === 'SOLDOUT') {
-            return <span style={{ background: '#800000', color: 'white', padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '800' }}>SOLD OUT</span>;
+        if (result) {
+            let label = cr!.status;
+            let bg = '#f5f5f5';
+            let color = '#666';
+            if (result === 'pass' || result === 'ok') { label = 'Pass'; bg = '#e8f5e9'; color = '#2e7d32'; }
+            else if (result === 'fail') { label = 'Fail'; bg = '#ffcdd2'; color = '#b71c1c'; }
+            else if (result === 'recheck') { label = 'Recheck'; bg = '#e3f2fd'; color = '#1565c0'; }
+            else if (result === 'medium') { label = 'Medium'; bg = '#fff8e1'; color = '#ef6c00'; }
+            return <span style={{ background: bg, color, padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>{label}</span>;
         }
 
-        // Pass Without Cooking = no cooking needed, show dash
-        if (d === 'PASS_WITHOUT_COOKING') {
-            return <span style={{ color: '#999', fontSize: '10px' }}>-</span>;
+        if (d === 'PASS_WITH_COOKING') {
+            return <span style={{ background: '#ffe0b2', color: '#e65100', padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>Pending</span>;
         }
-        // FAIL decision = entire entry failed
-        if (d === 'FAIL') {
-            return <span style={{ background: '#ffcdd2', color: '#b71c1c', padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>✕ Failed</span>;
-        }
-        // Pass With Cooking + cooking report submitted = show actual result
-        if (d === 'PASS_WITH_COOKING' && cr && cr.status) {
-            const result = cr.status.toLowerCase();
-            let bg = '#f5f5f5'; let color = '#666'; let label = cr.status;
-            if (result === 'pass' || result === 'ok') { bg = '#e8f5e9'; color = '#2e7d32'; label = '✓ Pass'; }
-            else if (result === 'fail') { bg = '#ffcdd2'; color = '#b71c1c'; label = '✕ Fail'; }
-            else if (result === 'recheck') { bg = '#e3f2fd'; color = '#1565c0'; label = '🔄 Recheck'; }
-            else if (result === 'medium') { bg = '#e8f5e9'; color = '#2e7d32'; label = '✓ Pass'; }
 
-            if (!isRiceBook) {
-                return (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                        <span style={{ background: bg, color, padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>{label}</span>
-                        {result === 'recheck' && cr.remarks && (
-                            <span title={cr.remarks} style={{ color: '#8e24aa', fontSize: '9px', fontWeight: '700', cursor: 'help' }}>💬 Remarks</span>
-                        )}
-                    </div>
-                );
-            }
-
-            return (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
-                    <span style={{ background: bg, color, padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>{label}</span>
-                    {doneBy && <span style={{ fontSize: '9px', color: '#4e342e', fontWeight: '700' }}>Done: {toTitleCase(doneBy)}</span>}
-                    {approvedBy && <span style={{ fontSize: '9px', color: '#0d47a1', fontWeight: '700' }}>Appr: {toTitleCase(approvedBy)}</span>}
-                    {eventDate && <span style={{ fontSize: '9px', color: '#616161' }}>{eventDate}</span>}
-                    {hasRemarks && (
-                        <span title={cr.remarks} style={{ color: '#8e24aa', fontSize: '9px', fontWeight: '700', cursor: 'help' }}>💬 Remarks</span>
-                    )}
-                </div>
-            );
-        }
-        // Pass With Cooking but no cooking report yet = Pending
-        if (d === 'PASS_WITH_COOKING' && (!cr || !cr.status)) {
-            if (!isRiceBook) {
-                return <span style={{ background: '#ffe0b2', color: '#e65100', padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '600' }}>⏳ Pending</span>;
-            }
-            return (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
-                    <span style={{ background: '#ffe0b2', color: '#e65100', padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '600' }}>⏳ Pending</span>
-                    {doneBy && <span style={{ fontSize: '9px', color: '#4e342e', fontWeight: '700' }}>Done: {toTitleCase(doneBy)}</span>}
-                    {eventDate && <span style={{ fontSize: '9px', color: '#616161' }}>{eventDate}</span>}
-                </div>
-            );
-        }
-        // No lot decision yet
         return <span style={{ color: '#999', fontSize: '10px' }}>-</span>;
     };
 
@@ -297,22 +223,44 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
     const qualityBadge = (entry: SampleEntry) => {
         const qp = entry.qualityParameters;
         const d = entry.lotSelectionDecision;
-        if (qp && qp.moisture != null) {
-            // Check if full quality params are filled (cutting, bend, mix etc.)
-            const hasFullQuality = (qp.cutting1 && Number(qp.cutting1) !== 0) || (qp.bend1 && Number(qp.bend1) !== 0) || (qp.mix && Number(qp.mix) !== 0) || (qp.mixS && Number(qp.mixS) !== 0) || (qp.mixL && Number(qp.mixL) !== 0);
-            if (hasFullQuality) {
-                if (d === 'PASS_WITH_COOKING' || d === 'PASS_WITHOUT_COOKING') {
-                    return <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '8px' }}><span style={{ background: '#c8e6c9', color: '#2e7d32', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '600' }}>✓ Done</span><span style={{ background: '#a5d6a7', color: '#1b5e20', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>Pass</span></div>;
-                }
-                return <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}><span style={{ background: '#c8e6c9', color: '#2e7d32', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '600' }}>✓ Done</span></div>;
-            }
-            // Only 100gms data (moisture + grains count) — show 100-Gms so user knows what's done
-            return <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}><span style={{ background: '#fff8e1', color: '#f57f17', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '600' }}>100-Gms</span></div>;
-        }
-        return <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}><span style={{ background: '#f5f5f5', color: '#c62828', padding: '2px 6px', borderRadius: '10px', fontSize: '9px' }}>Pending</span></div>;
+        const hasAnyQuality = !!(
+            qp && (
+                (qp.moisture != null && Number(qp.moisture) !== 0) ||
+                (qp.grainsCount != null && Number(qp.grainsCount) !== 0) ||
+                (qp.cutting1 && Number(qp.cutting1) !== 0) ||
+                (qp.cutting2 && Number(qp.cutting2) !== 0) ||
+                (qp.bend1 && Number(qp.bend1) !== 0) ||
+                (qp.bend2 && Number(qp.bend2) !== 0) ||
+                (qp.mix && Number(qp.mix) !== 0) ||
+                (qp.mixS && Number(qp.mixS) !== 0) ||
+                (qp.mixL && Number(qp.mixL) !== 0) ||
+                (qp.kandu && Number(qp.kandu) !== 0) ||
+                (qp.oil && Number(qp.oil) !== 0) ||
+                (qp.sk && Number(qp.sk) !== 0) ||
+                (qp.wbR && Number(qp.wbR) !== 0) ||
+                (qp.wbBk && Number(qp.wbBk) !== 0) ||
+                (qp.wbT && Number(qp.wbT) !== 0) ||
+                (qp.paddyWb && Number(qp.paddyWb) !== 0)
+            )
+        );
+
+        const lotPassed = d === 'PASS_WITH_COOKING' || d === 'PASS_WITHOUT_COOKING';
+
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '3px', minWidth: '90px' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                    {hasAnyQuality ? (
+                        <span style={{ background: '#c8e6c9', color: '#2e7d32', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700', whiteSpace: 'nowrap' }}>Done</span>
+                    ) : (
+                        <span style={{ color: '#999', fontSize: '10px' }}>-</span>
+                    )}
+                    {lotPassed && (
+                        <span style={{ background: '#c8e6c9', color: '#2e7d32', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700', whiteSpace: 'nowrap' }}>Pass</span>
+                    )}
+                </div>
+            </div>
+        );
     };
-
-
 
     return (
         <div>
@@ -371,10 +319,10 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                             {brokerIdx === 0 && <div style={{
                                                 background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
                                                 color: 'white', padding: '6px 10px', fontWeight: '700', fontSize: '14px',
-                                                textAlign: 'center', letterSpacing: '0.5px'
+                                                textAlign: 'left', letterSpacing: '0.5px'
                                             }}>
                                                 {(() => { const d = new Date(brokerEntries[0]?.entryDate); return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`; })()}
-                                                &nbsp;&nbsp;{entryType === 'RICE_SAMPLE' ? 'Rice Sample' : 'Paddy Sample'}
+                                                &nbsp;&nbsp;{'Rice Sample'}
                                             </div>}
                                             {/* Broker name bar */}
                                             <div style={{
@@ -387,16 +335,16 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                             {/* Table */}
                                             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', tableLayout: 'fixed', border: '1px solid #000' }}>
                                                 <thead>
-                                                    <tr style={{ backgroundColor: entryType === 'RICE_SAMPLE' ? '#4a148c' : '#1a237e', color: 'white' }}>
+                                                    <tr style={{ backgroundColor: '#4a148c', color: 'white' }}>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '3.5%' }}>SL No</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Bags</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Pkg</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>Party Name</th>
-                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>{entryType === 'RICE_SAMPLE' ? 'Rice Location' : 'Paddy Location'}</th>
+                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>{'Rice Location'}</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '9%' }}>Variety</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>Sample Collected By</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '11%' }}>Quality Report</th>
-                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: isRiceBook ? '12%' : '6%' }}>Cooking Report</th>
+                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: isRiceBook ? '8%' : '6%' }}>Cooking Report</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '5.5%' }}>Offer</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '5.5%' }}>Final</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '7%' }}>Status</th>
@@ -411,7 +359,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                                             ? '#fff0f0'
                                                             : entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : entry.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff';
 
-                                                        const fallback = entryType === 'RICE_SAMPLE' ? '--' : '-';
+                                                        const fallback = '--';
                                                         const fmtVal = (v: any, forceDecimal = false, precision = 2) => {
                                                             if (v == null || v === '') return fallback;
                                                             const n = Number(v);
@@ -443,7 +391,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                                                     border: '1px solid #000',
                                                                     padding: '3px 4px',
                                                                     fontSize: '11px',
-                                                                    textAlign: isRiceBook ? 'left' : 'center',
+                                                                    textAlign: 'center',
                                                                     whiteSpace: isRiceBook ? 'normal' : 'nowrap',
                                                                     lineHeight: isRiceBook ? '1.2' : '1',
                                                                     verticalAlign: isRiceBook ? 'top' : 'middle'
@@ -668,4 +616,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
     );
 };
 
-export default AdminSampleBook2;
+export default RiceSampleBook;
+
+
+
