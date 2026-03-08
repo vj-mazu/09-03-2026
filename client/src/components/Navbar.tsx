@@ -14,7 +14,8 @@ const Nav = styled.nav`
 `;
 
 const NavContainer = styled.div`
-  max-width: 1600px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
   display: flex;
   justify-content: space-between;
@@ -81,6 +82,9 @@ const NavLinks = styled.div<{ $mobileOpen?: boolean }>`
   align-items: center;
   flex: 1;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  row-gap: 0.35rem;
+  min-width: 0;
 
   @media (max-width: 1024px) {
     position: fixed;
@@ -239,7 +243,7 @@ const UserInfo = styled.div`
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-left: 0.75rem;
+  margin-left: auto;
   padding-left: 0.75rem;
   border-left: 1px solid rgba(255, 255, 255, 0.2);
   white-space: nowrap;

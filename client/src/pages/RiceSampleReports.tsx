@@ -64,9 +64,11 @@ const RiceSampleReports: React.FC = () => {
                 gap: '0',
                 backgroundColor: 'white',
                 borderBottom: '2px solid #e0e0e0',
-                overflowX: 'auto',
+                overflowX: 'visible',
                 padding: '0 8px',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'normal',
+                flexWrap: 'wrap',
+                rowGap: '4px'
             }}>
                 {tabs.map(tab => {
                     const isActive = activeTab === tab.key;

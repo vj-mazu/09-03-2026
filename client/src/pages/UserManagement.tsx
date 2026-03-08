@@ -301,6 +301,13 @@ const EditModal: React.FC<EditModalProps> = ({ user, mode, onClose, onSave }) =>
     const [qualityName, setQualityName] = useState('');
     const [loading, setLoading] = useState(false);
 
+    useEffect(() => {
+        if (mode === 'create' && role !== 'staff') {
+            setQualityEnabled(false);
+            setQualityName('');
+        }
+    }, [mode, role]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -319,7 +326,7 @@ const EditModal: React.FC<EditModalProps> = ({ user, mode, onClose, onSave }) =>
                     password,
                     role,
                     ...(role === 'staff' ? { staffType } : {}),
-                    ...(qualityEnabled ? { qualityName } : {})
+                    ...(role === 'staff' && qualityEnabled ? { qualityName } : {})
                 });
                 toast.success('User created successfully');
             } else {
@@ -447,7 +454,7 @@ const EditModal: React.FC<EditModalProps> = ({ user, mode, onClose, onSave }) =>
                         </FormGroup>
                     )}
 
-                    {mode === 'create' && (
+                    {mode === 'create' && role === 'staff' && (
                         <FormGroup>
                             <Label>Quality</Label>
                             <div style={{ display: 'flex', gap: '20px', padding: '8px 0' }}>
