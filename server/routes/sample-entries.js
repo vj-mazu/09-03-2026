@@ -111,7 +111,15 @@ router.get('/by-role', authenticateToken, async (req, res) => {
       excludeEntryType
     };
 
-    const result = await SampleEntryService.getSampleEntriesByRole(getWorkflowRole(req.user), filters, req.user.userId);
+    // Keep sample-book visibility for all staff users (mill/location).
+    // For listing endpoints, using effectiveRole (quality_supervisor/physical_supervisor)
+    // applies strict workflow status filters and hides normal staff entries.
+    const queryRole =
+      req.user.role === 'staff'
+        ? 'staff'
+        : getWorkflowRole(req.user);
+
+    const result = await SampleEntryService.getSampleEntriesByRole(queryRole, filters, req.user.userId);
     res.json(result);
   } catch (error) {
     console.error('Error getting sample entries:', error);

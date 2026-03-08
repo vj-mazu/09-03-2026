@@ -596,7 +596,7 @@ const RiceSampleEntry: React.FC<{ defaultTab?: 'RICE_SAMPLE' | 'RICE_BOOK' }> = 
         flexWrap: 'wrap',
         gap: '10px'
       }}>
-        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800', background: 'linear-gradient(135deg, #2e7d32, #43a047)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '1px' }}>🌾 RICE SAMPLE MANAGER</h2>
+        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800', background: 'linear-gradient(135deg, #2e7d32, #43a047)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '1px' }}>🍚 NEW RICE SAMPLE</h2>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           {/* Rice Sample button - same access as Mill Sample */}
           <button
@@ -619,7 +619,7 @@ const RiceSampleEntry: React.FC<{ defaultTab?: 'RICE_SAMPLE' | 'RICE_BOOK' }> = 
               boxShadow: '0 2px 4px rgba(46,125,50,0.3)'
             }}
           >
-            + New Rice Sample
+            + New Rice Entry
           </button>
         </div>
       </div>

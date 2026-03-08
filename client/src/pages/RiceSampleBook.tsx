@@ -64,6 +64,16 @@ interface SampleEntry {
 }
 
 const toTitleCase = (str: string) => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : '';
+const formatPackagingLabel = (packaging?: string | number | null) => {
+    const raw = String(packaging ?? '').trim();
+    if (!raw) return '75 kg';
+
+    const lower = raw.toLowerCase();
+    if (lower === '0' || lower === 'loose' || lower.startsWith('loose')) return 'Loose';
+    if (lower.includes('kg') || lower.includes('ton')) return raw;
+    return `${raw} kg`;
+};
+
 const RiceSampleBook: React.FC = () => {
     const isRiceBook = true;
     const [entries, setEntries] = useState<SampleEntry[]>([]);
@@ -245,19 +255,21 @@ const RiceSampleBook: React.FC = () => {
         );
 
         const lotPassed = d === 'PASS_WITH_COOKING' || d === 'PASS_WITHOUT_COOKING';
+        const showDone = hasAnyQuality;
+        const showPass = hasAnyQuality && lotPassed;
+
+        if (!showDone && !showPass) {
+            return <span style={{ color: '#999', fontSize: '10px' }}>-</span>;
+        }
 
         return (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '3px', minWidth: '90px' }}>
-                <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                    {hasAnyQuality ? (
-                        <span style={{ background: '#c8e6c9', color: '#2e7d32', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700', whiteSpace: 'nowrap' }}>Done</span>
-                    ) : (
-                        <span style={{ color: '#999', fontSize: '10px' }}>-</span>
-                    )}
-                    {lotPassed && (
-                        <span style={{ background: '#c8e6c9', color: '#2e7d32', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700', whiteSpace: 'nowrap' }}>Pass</span>
-                    )}
-                </div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexWrap: 'nowrap' }}>
+                {showDone && (
+                    <span style={{ background: '#c8e6c9', color: '#2e7d32', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700', whiteSpace: 'nowrap' }}>Done</span>
+                )}
+                {showPass && (
+                    <span style={{ background: '#c8e6c9', color: '#2e7d32', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700', whiteSpace: 'nowrap' }}>Pass</span>
+                )}
             </div>
         );
     };
@@ -373,7 +385,7 @@ const RiceSampleBook: React.FC = () => {
                                                             <tr key={entry.id} style={{ backgroundColor: rowBg }}>
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>{idx + 1}</td>
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap' }}>{entry.bags || '0'}</td>
-                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap' }}>{Number(entry.packaging) === 0 ? 'Loose' : `${entry.packaging || '75'} kg`}</td>
+                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap' }}>{formatPackagingLabel(entry.packaging)}</td>
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '14px', cursor: 'pointer', color: '#1565c0', fontWeight: '600', textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
                                                                     onClick={() => setDetailEntry(entry)}>
                                                                     {toTitleCase(entry.partyName) || ''}
@@ -471,7 +483,7 @@ const RiceSampleBook: React.FC = () => {
                                     {[
                                         ['Date', new Date(detailEntry.entryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })],
                                         ['Bags', detailEntry.bags?.toLocaleString('en-IN')],
-                                        ['Packaging', `${detailEntry.packaging || '75'} Kg`],
+                                        ['Packaging', formatPackagingLabel(detailEntry.packaging)],
                                         ['Variety', detailEntry.variety],
                                     ].map(([label, value], i) => (
                                         <div key={i} style={{ background: '#f8f9fa', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e0e0e0' }}>

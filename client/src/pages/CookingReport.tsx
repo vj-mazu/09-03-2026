@@ -51,16 +51,17 @@ interface CookingReportProps {
 const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryType }) => {
   const { user } = useAuth();
   const { showNotification } = useNotification();
-  const [entries, setEntries] = useState<SampleEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [selectedEntry, setSelectedEntry] = useState<SampleEntry | null>(null);
-  const [cookingData, setCookingData] = useState({
+  const createEmptyCookingData = () => ({
     status: '',
     remarks: '',
     cookingDoneBy: '',
     cookingApprovedBy: ''
   });
+  const [entries, setEntries] = useState<SampleEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<SampleEntry | null>(null);
+  const [cookingData, setCookingData] = useState(createEmptyCookingData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submissionLocksRef = useRef<Set<string>>(new Set());
   const [supervisors, setSupervisors] = useState<SupervisorUser[]>([]);
@@ -89,6 +90,22 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
   const [approvalType, setApprovalType] = useState<'owner' | 'manager' | 'admin' | 'manual'>('owner');
   const [manualApprovalName, setManualApprovalName] = useState('');
   const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const resetReportFormState = () => {
+    setCookingData(createEmptyCookingData());
+    setManualCookingName('');
+    setUseManualEntry(false);
+    setShowRemarksInput(false);
+    setApprovalType('owner');
+    setManualApprovalName('');
+    setManualDate(new Date().toISOString().split('T')[0]);
+  };
+
+  const closeReportModal = () => {
+    setShowModal(false);
+    setSelectedEntry(null);
+    resetReportFormState();
+  };
 
   // Filters
   const [filtersVisible, setFiltersVisible] = useState(false);
@@ -197,33 +214,8 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
   const handleOpenModal = (entry: SampleEntry) => {
     setSelectedEntry(entry);
     setShowModal(true);
-
-    // If staff is opening the modal, they are submitting a NEW action (either fresh or recheck).
-    // Clear the saved name so both the dropdown and manual input are visible by default.
-    const savedName = user?.role === 'staff' ? '' : (entry.cookingReport?.cookingDoneBy || '');
-    const isDropdownOption = !savedName || supervisors.some(s =>
-      s.username.toLowerCase() === savedName.toLowerCase()
-    );
-
-    setCookingData({
-      status: entry.cookingReport?.status || '',
-      remarks: entry.cookingReport?.remarks || '',
-      cookingDoneBy: isDropdownOption ? savedName : '',
-      cookingApprovedBy: entry.cookingReport?.cookingApprovedBy || ''
-    });
-
-    setManualCookingName(isDropdownOption ? '' : savedName);
-    setUseManualEntry(!isDropdownOption && !!savedName);
-    setShowRemarksInput(!!entry.cookingReport?.remarks);
-
-    // Attempt to match existing approval type
-    if (entry.cookingReport?.cookingApprovedBy === 'Harish') setApprovalType('owner');
-    else if (entry.cookingReport?.cookingApprovedBy === 'Guru') setApprovalType('manager');
-    else if (entry.cookingReport?.cookingApprovedBy === 'MK Subbu') setApprovalType('admin');
-    else setApprovalType('owner');
-
-    setManualApprovalName('');
-    setManualDate(new Date().toISOString().split('T')[0]);
+    // Always start with a clean form for a new report action.
+    resetReportFormState();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -284,8 +276,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
         }
       }
 
-      setShowModal(false);
-      setSelectedEntry(null);
+      closeReportModal();
       loadEntries();
     } catch (error: any) {
       showNotification(error.response?.data?.error || 'Failed to add cooking report', 'error');
@@ -1105,7 +1096,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                     <p style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>⚠️ Action Required by Paddy Supervisor</p>
                     <p style={{ margin: '8px 0 0', fontSize: '13px' }}>The Paddy Supervisor must select "Cooking Done By" and save their details before an Admin or Manager can approve and set the Status.</p>
                     <div style={{ marginTop: '16px' }}>
-                      <button type="button" onClick={() => setShowModal(false)}
+                      <button type="button" onClick={closeReportModal}
                         style={{ padding: '8px 16px', cursor: 'pointer', border: '1px solid #999', borderRadius: '3px', backgroundColor: 'white', fontSize: '13px', color: '#666' }}>
                         Close
                       </button>
@@ -1261,7 +1252,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                     )}
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid #eee', paddingTop: '12px' }}>
-                      <button type="button" onClick={() => setShowModal(false)} disabled={isSubmitting}
+                      <button type="button" onClick={closeReportModal} disabled={isSubmitting}
                         style={{ padding: '8px 16px', cursor: isSubmitting ? 'not-allowed' : 'pointer', border: '1px solid #999', borderRadius: '3px', backgroundColor: 'white', fontSize: '13px', color: '#666' }}>
                         Cancel
                       </button>
