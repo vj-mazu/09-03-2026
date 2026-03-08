@@ -1482,6 +1482,15 @@ const startServer = async () => {
       } catch (error) {
         console.log('⚠️ Migration 106 warning:', error.message);
       }
+      // Migration 107: Final Pass Lots performance indexes
+      try {
+        const addFinalPassLotsIndexes = require('./migrations/107_add_final_pass_lots_indexes');
+        await addFinalPassLotsIndexes.up();
+        console.log('✅ Migration 107: Final Pass Lots indexes added');
+      } catch (error) {
+        console.log('⚠️ Migration 107 warning:', error.message);
+      }
+
 
       console.log('✅ All migrations + indexes completed.');
     }

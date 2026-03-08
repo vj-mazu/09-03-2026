@@ -15,7 +15,7 @@ const QualityParameters = require('../models/QualityParameters');
 const SampleEntryOffering = require('../models/SampleEntryOffering');
 const CookingReport = require('../models/CookingReport');
 const User = require('../models/User');
-const { Op } = require('sequelize');
+const { Op, col, where: sqlWhere } = require('sequelize');
 const getWorkflowRole = (user) => user?.effectiveRole || user?.role;
 
 // ─── Paddy Supervisors list (for Sample Collected By dropdown) ───
@@ -185,6 +185,148 @@ router.get('/tabs/loading-lots', authenticateToken, cacheMiddleware(30), async (
     console.error('Error getting loading lots:', error.message);
     console.error('Full error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ─── Final Pass Lots (optimized for very large datasets) ───
+router.get('/tabs/final-pass-lots', authenticateToken, cacheMiddleware(15), async (req, res) => {
+  try {
+    const {
+      page = 1,
+      pageSize = 100,
+      broker,
+      variety,
+      party,
+      location,
+      startDate,
+      endDate,
+      entryType,
+      excludeEntryType
+    } = req.query;
+
+    // Final Pass Lots should include:
+    // 1) entries directly moved to FINAL_REPORT
+    // 2) entries that went to cooking and came back to LOT_SELECTION with PASS/MEDIUM
+    const cookingStatusPassOrMedium = sqlWhere(col('cookingReport.status'), { [Op.in]: ['PASS', 'MEDIUM'] });
+    const conditionBlocks = [
+      {
+        [Op.or]: [
+          { workflowStatus: 'FINAL_REPORT' },
+          {
+            [Op.and]: [
+              { workflowStatus: 'LOT_SELECTION', lotSelectionDecision: 'PASS_WITH_COOKING' },
+              cookingStatusPassOrMedium
+            ]
+          }
+        ]
+      }
+    ];
+
+    if (broker) conditionBlocks.push({ brokerName: { [Op.iLike]: `%${broker}%` } });
+    if (variety) conditionBlocks.push({ variety: { [Op.iLike]: `%${variety}%` } });
+    if (party) conditionBlocks.push({ partyName: { [Op.iLike]: `%${party}%` } });
+    if (location) conditionBlocks.push({ location: { [Op.iLike]: `%${location}%` } });
+
+    if (startDate && endDate) {
+      conditionBlocks.push({ entryDate: { [Op.between]: [startDate, endDate] } });
+    } else if (startDate) {
+      conditionBlocks.push({ entryDate: { [Op.gte]: startDate } });
+    } else if (endDate) {
+      conditionBlocks.push({ entryDate: { [Op.lte]: endDate } });
+    }
+
+    if (entryType) {
+      conditionBlocks.push({ entryType });
+    } else if (excludeEntryType) {
+      conditionBlocks.push({ entryType: { [Op.ne]: excludeEntryType } });
+    }
+
+    const include = [
+      {
+        model: QualityParameters,
+        as: 'qualityParameters',
+        attributes: [
+          'id', 'moisture', 'dryMoisture', 'cutting1', 'cutting2', 'bend', 'bend1', 'bend2',
+          'mixS', 'mixL', 'mix', 'kandu', 'oil', 'sk', 'grainsCount', 'wbR', 'wbBk', 'wbT',
+          'paddyWb', 'gramsReport', 'reportedBy'
+        ],
+        required: false
+      },
+      {
+        model: CookingReport,
+        as: 'cookingReport',
+        attributes: ['id', 'status', 'remarks', 'cookingDoneBy', 'cookingApprovedBy', 'history', 'updatedAt'],
+        required: false
+      },
+      {
+        model: SampleEntryOffering,
+        as: 'offering',
+        attributes: [
+          'id', 'offerRate', 'sute', 'suteUnit', 'baseRateType', 'baseRateUnit',
+          'offerBaseRateValue', 'hamaliEnabled', 'hamaliPerKg', 'hamaliPerQuintal',
+          'hamaliUnit', 'moistureValue', 'brokerage', 'brokerageEnabled', 'brokerageUnit',
+          'lf', 'lfEnabled', 'lfUnit', 'egbType', 'egbValue', 'customDivisor',
+          'finalBaseRate', 'finalSute', 'finalSuteUnit', 'finalPrice', 'isFinalized'
+        ],
+        required: false
+      },
+      {
+        model: User,
+        as: 'creator',
+        attributes: ['id', 'username'],
+        required: false
+      }
+    ];
+
+    const paginationQuery = buildCursorQuery(req.query, 'DESC');
+    if (paginationQuery.where && Object.keys(paginationQuery.where).length) {
+      conditionBlocks.push(paginationQuery.where);
+    }
+    const mergedWhere = conditionBlocks.length === 1
+      ? conditionBlocks[0]
+      : { [Op.and]: conditionBlocks };
+
+    const attributes = [
+      'id', 'serialNo', 'entryDate', 'createdAt', 'workflowStatus', 'lotSelectionDecision',
+      'brokerName', 'variety', 'partyName', 'location', 'bags', 'packaging',
+      'entryType', 'sampleCollectedBy', 'offeringPrice', 'finalPrice', 'lorryNumber'
+    ];
+
+    if (paginationQuery.isCursor) {
+      const rows = await SampleEntry.findAll({
+        where: mergedWhere,
+        attributes,
+        include,
+        order: paginationQuery.order,
+        limit: paginationQuery.limit,
+        subQuery: false
+      });
+
+      const response = formatCursorResponse(rows, paginationQuery.limit);
+      return res.json({ entries: response.data, pagination: response.pagination });
+    }
+
+    const { count, rows } = await SampleEntry.findAndCountAll({
+      where: mergedWhere,
+      attributes,
+      include,
+      order: paginationQuery.order,
+      limit: paginationQuery.limit,
+      offset: paginationQuery.offset,
+      subQuery: false,
+      distinct: true
+    });
+
+    return res.json({
+      entries: rows,
+      total: count,
+      page: parseInt(page, 10),
+      pageSize: parseInt(pageSize, 10),
+      totalPages: Math.max(1, Math.ceil(count / Math.max(1, parseInt(pageSize, 10) || 100)))
+    });
+  } catch (error) {
+    console.error('Error getting final pass lots:', error);
+    return res.status(500).json({ error: error.message });
   }
 });
 

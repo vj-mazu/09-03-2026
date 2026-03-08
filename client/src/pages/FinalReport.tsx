@@ -7,7 +7,9 @@ import { API_URL } from '../config/api';
 
 interface SampleEntry {
   id: string;
+  serialNo?: number;
   entryDate: string;
+  createdAt?: string;
   brokerName: string;
   variety: string;
   partyName: string;
@@ -15,7 +17,9 @@ interface SampleEntry {
   bags: number;
   packaging?: string;
   workflowStatus: string;
+  lotSelectionDecision?: string;
   entryType?: string;
+  sampleCollectedBy?: string;
   offeringPrice?: number;
   lorryNumber?: string;
   offering?: any;
@@ -29,6 +33,9 @@ interface SampleEntry {
   egb?: number;
   customDivisor?: number;
   finalPrice?: number;
+  qualityParameters?: any;
+  cookingReport?: any;
+  creator?: { id: number; username: string };
 }
 
 interface OfferingData {
@@ -88,6 +95,18 @@ const headerCellStyle: React.CSSProperties = { padding: '8px', fontWeight: '600'
 const dataCellStyle: React.CSSProperties = { padding: '6px', fontSize: '11px', whiteSpace: 'nowrap' };
 
 const toTitleCase = (str: string) => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : '';
+const toNumberText = (value: any, digits = 2) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num.toFixed(digits).replace(/\.00$/, '') : '-';
+};
+const cookingStatusLabel = (status?: string) => {
+  const key = (status || '').toUpperCase();
+  if (key === 'PASS') return 'Pass';
+  if (key === 'MEDIUM') return 'Pass/Med';
+  if (key === 'RECHECK') return 'Recheck';
+  if (key === 'FAIL') return 'Fail';
+  return '-';
+};
 
 interface FinalReportProps {
   entryType?: string;
@@ -105,6 +124,7 @@ const FinalReport: React.FC<FinalReportProps> = ({ entryType, excludeEntryType }
   const [offeringCache, setOfferingCache] = useState<{ [key: string]: any }>({});
   const isAdmin = (user?.role as string) === 'admin' || (user?.role as string) === 'owner';
   const isManager = user?.role === 'manager';
+  const isRiceMode = entryType === 'RICE_SAMPLE';
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submissionLocksRef = useRef<Set<string>>(new Set());
 
@@ -193,7 +213,7 @@ const FinalReport: React.FC<FinalReportProps> = ({ entryType, excludeEntryType }
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const params: any = { status: 'FINAL_REPORT', page: currentPage, pageSize };
+      const params: any = { page: currentPage, pageSize };
 
       const b = fB !== undefined ? fB : filterBroker;
       const v = fV !== undefined ? fV : filterVariety;
@@ -207,19 +227,25 @@ const FinalReport: React.FC<FinalReportProps> = ({ entryType, excludeEntryType }
       if (entryType) params.entryType = entryType;
       if (excludeEntryType) params.excludeEntryType = excludeEntryType;
 
-      const response = await axios.get(`${API_URL}/sample-entries/by-role`, {
+      const response = await axios.get(`${API_URL}/sample-entries/tabs/final-pass-lots`, {
         params,
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = response.data as any;
       const loadedEntries = data.entries || [];
       setEntries(loadedEntries);
+      const cache: { [key: string]: any } = {};
+      loadedEntries.forEach((entry: SampleEntry) => {
+        if (entry.offering) cache[entry.id] = entry.offering;
+      });
+      setOfferingCache(cache);
       if (data.total != null) {
         setTotalEntries(data.total);
         setTotalPages(data.totalPages || Math.ceil(data.total / pageSize));
+      } else {
+        setTotalEntries(loadedEntries.length);
+        setTotalPages(loadedEntries.length < pageSize ? currentPage : currentPage + 1);
       }
-      // Load offering details for each entry to display in table
-      loadOfferingForEntries(loadedEntries, token!);
     } catch (error: any) {
       showNotification(error.response?.data?.error || 'Failed to load entries', 'error');
     } finally {
@@ -241,19 +267,6 @@ const FinalReport: React.FC<FinalReportProps> = ({ entryType, excludeEntryType }
     setTimeout(() => {
       loadEntries('', '', '', '');
     }, 0);
-  };
-
-  const loadOfferingForEntries = async (entryList: SampleEntry[], token: string) => {
-    const cache: { [key: string]: any } = {};
-    for (const entry of entryList) {
-      try {
-        const res = await axios.get(`${API_URL}/sample-entries/${entry.id}/offering-data`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.data) cache[entry.id] = res.data;
-      } catch { /* skip */ }
-    }
-    setOfferingCache(cache);
   };
 
   // Entries are now server-side filtered, no client-side filtering needed
@@ -611,81 +624,129 @@ const FinalReport: React.FC<FinalReportProps> = ({ entryType, excludeEntryType }
                       </div>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', tableLayout: 'fixed', border: '1px solid #000' }}>
                         <thead>
-                          <tr style={{ backgroundColor: '#1a237e', color: 'white', }}>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>SL No</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Type</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Bags</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Pkg</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>Party Name</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>{entryType === 'RICE_SAMPLE' ? 'Rice Location' : 'Paddy Location'}</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '9%' }}>Variety</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '22%' }}>Offering Details</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '22%' }}>Final Price</th>
-                            <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '8%' }}>Action</th>
+                          <tr style={{ backgroundColor: '#1a237e', color: 'white' }}>
+                            {isRiceMode ? (
+                              <>
+                                <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '3%' }}>SL No</th>
+                                <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Type</th>
+                                <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Bags</th>
+                                <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Pkg</th>
+                                <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>Party Name</th>
+                                <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>Rice Location</th>
+                                <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '9%' }}>Variety</th>
+                                <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '22%' }}>Offering Details</th>
+                                <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '22%' }}>Final Price</th>
+                                <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '8%' }}>Action</th>
+                              </>
+                            ) : (
+                              <>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>SL No</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>Type</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>Bags</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>Pkg</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'left', whiteSpace: 'nowrap' }}>Party Name</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'left', whiteSpace: 'nowrap' }}>Paddy Location</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'left', whiteSpace: 'nowrap' }}>Variety</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'left', whiteSpace: 'nowrap' }}>Sample Collected By</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>Grain</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>Moist</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>Cutting</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>Bend</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>Mix</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>Oil/Kandu</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>SK</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>100 Gms</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>Paddy WB</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'left', whiteSpace: 'nowrap' }}>Sample Report By</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>Cooking</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>Offer Rate</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>Final Rate</th>
+                                <th style={{ border: '1px solid #000', padding: '3px', fontWeight: '700', fontSize: '12px', textAlign: 'center', whiteSpace: 'nowrap' }}>Action</th>
+                              </>
+                            )}
                           </tr>
                         </thead>
                         <tbody>
                           {brokerEntries.map((entry, index) => {
-                            const o = offeringCache[entry.id];
+                            const o = offeringCache[entry.id] || entry.offering;
                             const slNo = index + 1;
+                            const rowType = entry.entryType === 'DIRECT_LOADED_VEHICLE' ? 'RL' : entry.entryType === 'LOCATION_SAMPLE' ? 'LS' : 'MS';
+                            const qp = entry.qualityParameters || {};
+                            const cp = entry.cookingReport || {};
                             return (
-                              <tr key={entry.id} style={{ backgroundColor: entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : entry.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff', }}>
-                                <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap' }}>{slNo}</td>
-                                <td style={{ border: '1px solid #000', padding: '1px 3px', textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                                  {entry.entryType === 'DIRECT_LOADED_VEHICLE' && <span style={{ color: 'white', backgroundColor: '#1565c0', padding: '1px 4px', borderRadius: '3px', fontSize: '12px', fontWeight: '800' }}>RL</span>}
-                                  {entry.entryType === 'LOCATION_SAMPLE' && <span style={{ color: 'white', backgroundColor: '#e67e22', padding: '1px 4px', borderRadius: '3px', fontSize: '12px', fontWeight: '800' }}>LS</span>}
-                                  {entry.entryType !== 'DIRECT_LOADED_VEHICLE' && entry.entryType !== 'LOCATION_SAMPLE' && <span style={{ color: '#333', backgroundColor: '#fff', padding: '1px 4px', borderRadius: '3px', fontSize: '12px', fontWeight: '800', border: '1px solid #ccc' }}>MS</span>}
-                                </td>
-                                <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap' }}>{entry.bags?.toLocaleString('en-IN') || '0'}</td>
-                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap' }}>{entry.packaging || '-'}</td>
-                                <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#1565c0', whiteSpace: 'nowrap' }}>{toTitleCase(entry.partyName)}{entry.entryType === 'DIRECT_LOADED_VEHICLE' && entry.lorryNumber ? <div style={{ fontSize: '13px', color: '#1565c0', fontWeight: '600' }}>{entry.lorryNumber.toUpperCase()}</div> : ''}</td>
-                                <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap' }}>{toTitleCase(entry.location) || '-'}</td>
-                                <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap' }}>{toTitleCase(entry.variety)}</td>
-                                <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '11px', whiteSpace: 'nowrap' }}>
-                                  {entry.offering?.finalPrice ? (
-                                    <span style={{ color: '#27ae60', fontWeight: '800' }}>₹{entry.offering.finalPrice}</span>
-                                  ) : (
-                                    <span style={{ color: '#e67e22', fontWeight: '700' }}>⏳ Pending</span>
-                                  )}
-                                </td>
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', fontSize: '9px', lineHeight: '1.3', whiteSpace: 'normal', textAlign: 'left' }}>
-                                  {(entry.offeringPrice || o) ? (
-                                    <div>
-                                      <div><strong>₹{o?.offerBaseRateValue || '-'}</strong> {(o?.baseRateType || entry.offerBaseRate || '-').replace(/_/g, '/')} {o?.baseRateUnit === 'per_quintal' ? 'Per Qtl' : o?.baseRateUnit === 'per_ton' ? 'Per Ton' : 'Per Bag'}{o?.customDivisor ? <span style={{ color: '#e67e22' }}> | Div {o.customDivisor}</span> : ''}</div>
-                                      <div>{o?.sute || '-'} Sute {o?.suteUnit === 'per_quintal' ? 'Per Qtl' : o?.suteUnit === 'per_ton' ? 'Per Ton' : 'Per Bag'} | Hamali {o?.hamaliEnabled !== false ? <strong>{o?.hamaliPerKg || o?.hamali || '-'}</strong> : <span style={{ color: '#e74c3c' }}>No</span>}{o?.hamaliEnabled !== false ? ` ${o?.hamaliUnit === 'per_quintal' ? 'Per Qtl' : 'Per Bag'}` : ''}</div>
-                                      <div>Bkrg {o?.brokerageEnabled !== false ? <strong>{o?.brokerage || '-'}</strong> : <span style={{ color: '#e74c3c' }}>No</span>}{o?.brokerageEnabled !== false ? ` ${o?.brokerageUnit === 'per_quintal' ? 'Per Qtl' : 'Per Bag'}` : ''} | LF {o?.lfEnabled !== false ? <strong>{o?.lf || '-'}</strong> : <span style={{ color: '#e74c3c' }}>No</span>}{o?.lfEnabled !== false ? ` ${o?.lfUnit === 'per_quintal' ? 'Per Qtl' : 'Per Bag'}` : ''}{(o?.baseRateType || '').includes('LOOSE') ? <span> | EGB <strong>{o?.egbValue || '0'}</strong> <span style={{ fontSize: '9px', color: o?.egbType === 'purchase' ? '#e65100' : '#2e7d32' }}>({o?.egbType === 'purchase' ? 'Purchase' : 'Mill'})</span></span> : ''}</div>
-                                    </div>
-                                  ) : '-'}
-                                </td>
-                                <td style={{ border: '1px solid #000', padding: '2px 3px', fontSize: '9px', lineHeight: '1.3', textAlign: 'left' }}>
-                                  {(entry.finalPrice || o?.finalPrice) ? (
-                                    <div>
-                                      <div><strong>₹{o?.finalPrice || entry.finalPrice}</strong>{o?.finalBaseRate ? ` | Base ${o.finalBaseRate}` : ''}</div>
-                                      <div>{o?.finalSute ? `${o.finalSute} Sute` : '-'} | Hamali {o?.hamaliEnabled ? (o.hamali || o.hamaliPerKg || '-') : <span style={{ color: '#e74c3c' }}>No</span>}</div>
-                                      <div>Bkrg {o?.brokerageEnabled ? (o.brokerage || '-') : <span style={{ color: '#e74c3c' }}>No</span>} | LF {o?.lfEnabled ? (o.lf || '-') : <span style={{ color: '#e74c3c' }}>No</span>}{(o?.baseRateType || '').includes('LOOSE') ? <span> | EGB <strong>{o?.egbValue || '0'}</strong> <span style={{ fontSize: '9px', color: o?.egbType === 'purchase' ? '#e65100' : '#2e7d32' }}>({o?.egbType === 'purchase' ? 'Purchase' : 'Mill'})</span></span> : ''}</div>
-                                    </div>
-                                  ) : '-'}
-                                </td>
-                                <td style={{ border: '1px solid #000', padding: '4px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'center' }}>
-                                    {isAdmin && (
-                                      <button onClick={() => handleOpenOfferModal(entry)}
-                                        style={{ fontSize: '10px', padding: '3px 8px', backgroundColor: (entry.offeringPrice || (offeringCache[entry.id] && offeringCache[entry.id].offerBaseRateValue)) ? '#3498db' : '#2196F3', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontWeight: '600', whiteSpace: 'nowrap' }}>
-                                        {(entry.offeringPrice || (offeringCache[entry.id] && offeringCache[entry.id].offerBaseRateValue)) ? 'Edit Offer' : 'Add Offer'}
-                                      </button>
-                                    )}
-                                    {(isAdmin || isManager) && (entry.offeringPrice || o) && (
-                                      <button onClick={() => handleOpenFinalModal(entry)}
-                                        style={{ fontSize: '10px', padding: '3px 8px', backgroundColor: entry.finalPrice ? '#27ae60' : '#e67e22', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontWeight: '600', whiteSpace: 'nowrap' }}>
-                                        {entry.finalPrice ? 'Edit Final' : 'Add Final'}
-                                      </button>
-                                    )}
-                                  </div>
-                                </td>
+                              <tr key={entry.id} style={{ backgroundColor: entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : entry.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff' }}>
+                                {isRiceMode ? (
+                                  <>
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap' }}>{slNo}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '700', whiteSpace: 'nowrap' }}>{rowType}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap' }}>{entry.bags?.toLocaleString('en-IN') || '0'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap' }}>{entry.packaging || '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#1565c0', whiteSpace: 'nowrap' }}>{toTitleCase(entry.partyName)}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap' }}>{toTitleCase(entry.location) || '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '13px', whiteSpace: 'nowrap' }}>{toTitleCase(entry.variety) || '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '11px', whiteSpace: 'nowrap' }}>{o?.offerBaseRateValue ? `Rs ${toNumberText(o.offerBaseRateValue)}` : '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '11px', whiteSpace: 'nowrap' }}>{o?.finalPrice || entry.finalPrice ? `Rs ${toNumberText(o?.finalPrice || entry.finalPrice)}` : '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '4px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'center' }}>
+                                        {isAdmin && (
+                                          <button onClick={() => handleOpenOfferModal(entry)} style={{ fontSize: '10px', padding: '3px 8px', backgroundColor: o?.offerBaseRateValue ? '#3498db' : '#2196F3', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                                            {o?.offerBaseRateValue ? 'Edit Offer' : 'Add Offer'}
+                                          </button>
+                                        )}
+                                        {(isAdmin || isManager) && (entry.offeringPrice || o) && (
+                                          <button onClick={() => handleOpenFinalModal(entry)} style={{ fontSize: '10px', padding: '3px 8px', backgroundColor: entry.finalPrice || o?.finalPrice ? '#27ae60' : '#e67e22', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                                            {entry.finalPrice || o?.finalPrice ? 'Edit Final' : 'Add Final'}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </>
+                                ) : (
+                                  <>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: '600' }}>{slNo}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: '700' }}>{rowType}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: '600' }}>{entry.bags?.toLocaleString('en-IN') || '0'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>{entry.packaging || '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 5px', textAlign: 'left', fontWeight: '600', color: '#0d47a1' }}>{toTitleCase(entry.partyName)}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 5px', textAlign: 'left' }}>{toTitleCase(entry.location) || '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 5px', textAlign: 'left' }}>{toTitleCase(entry.variety) || '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 5px', textAlign: 'left' }}>{entry.sampleCollectedBy || '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>{qp.grainsCount ? `[${qp.grainsCount}]` : '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>{`${toNumberText(qp.moisture)}${qp.dryMoisture ? ` | ${toNumberText(qp.dryMoisture)}` : ''}`}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>{`${toNumberText(qp.cutting1)} x ${toNumberText(qp.cutting2)}`}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>{`${toNumberText(qp.bend1 || qp.bend)} x ${toNumberText(qp.bend2)}`}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>{`S-${toNumberText(qp.mixS)} L-${toNumberText(qp.mixL)}`}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>{`${toNumberText(qp.oil)} | ${toNumberText(qp.kandu)}`}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>{toNumberText(qp.sk)}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>{`R-${toNumberText(qp.wbR)} BK-${toNumberText(qp.wbBk)} T-${toNumberText(qp.wbT)}`}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>{toNumberText(qp.paddyWb)}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 5px', textAlign: 'left' }}>{qp.reportedBy || entry.creator?.username || '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>
+                                      <div style={{ fontWeight: '700', color: '#00695c' }}>{cookingStatusLabel(cp.status)}</div>
+                                      {cp.remarks ? <div style={{ fontSize: '10px', color: '#455a64' }}>{cp.remarks}</div> : null}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>
+                                      {isAdmin ? (
+                                        <button onClick={() => handleOpenOfferModal(entry)} style={{ fontSize: '10px', padding: '3px 7px', backgroundColor: o?.offerBaseRateValue ? '#3498db' : '#2196F3', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontWeight: '700' }}>
+                                          {o?.offerBaseRateValue ? `Rs ${toNumberText(o.offerBaseRateValue)}` : 'Add Offer'}
+                                        </button>
+                                      ) : <span>{o?.offerBaseRateValue ? `Rs ${toNumberText(o.offerBaseRateValue)}` : '-'}</span>}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>
+                                      {(isAdmin || isManager) && (entry.offeringPrice || o) ? (
+                                        <button onClick={() => handleOpenFinalModal(entry)} style={{ fontSize: '10px', padding: '3px 7px', backgroundColor: entry.finalPrice || o?.finalPrice ? '#27ae60' : '#e67e22', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer', fontWeight: '700' }}>
+                                          {entry.finalPrice || o?.finalPrice ? `Rs ${toNumberText(o?.finalPrice || entry.finalPrice)}` : 'Add Final'}
+                                        </button>
+                                      ) : <span>{o?.finalPrice || entry.finalPrice ? `Rs ${toNumberText(o?.finalPrice || entry.finalPrice)}` : '-'}</span>}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: '700', color: entry.lotSelectionDecision === 'SOLDOUT' ? '#b71c1c' : '#444' }}>
+                                      {entry.lotSelectionDecision === 'SOLDOUT' ? 'Sold Out' : '-'}
+                                    </td>
+                                  </>
+                                )}
                               </tr>
                             );
-                          })}
-                        </tbody>
+                          })}</tbody>
                       </table>
                     </div>
                   );
@@ -695,35 +756,6 @@ const FinalReport: React.FC<FinalReportProps> = ({ entryType, excludeEntryType }
           })
         )}
       </div >
-
-      {/* Pagination */}
-      {
-        totalPages > 1 && (
-          <div style={{
-            display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-            padding: '12px', fontSize: '12px'
-          }}>
-            <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1}
-              style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: '3px', cursor: currentPage === 1 ? 'default' : 'pointer', backgroundColor: currentPage === 1 ? '#f0f0f0' : 'white', fontSize: '11px' }}>
-              First
-            </button>
-            <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
-              style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: '3px', cursor: currentPage === 1 ? 'default' : 'pointer', backgroundColor: currentPage === 1 ? '#f0f0f0' : 'white', fontSize: '11px' }}>
-              ‹ Prev
-            </button>
-            <span style={{ fontWeight: '500', color: '#555' }}>Page {currentPage} of {totalPages}</span>
-            <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-              style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: '3px', cursor: currentPage === totalPages ? 'default' : 'pointer', backgroundColor: currentPage === totalPages ? '#f0f0f0' : 'white', fontSize: '11px' }}>
-              Next ›
-            </button>
-            <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}
-              style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: '3px', cursor: currentPage === totalPages ? 'default' : 'pointer', backgroundColor: currentPage === totalPages ? '#f0f0f0' : 'white', fontSize: '11px' }}>
-              Last
-            </button>
-            <span style={{ color: '#888', marginLeft: '8px' }}>({totalEntries} total)</span>
-          </div>
-        )
-      }
 
       {/* ==================== OFFERING PRICE MODAL ==================== */}
       {
