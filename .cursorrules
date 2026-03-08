@@ -1,0 +1,41 @@
+---
+description: Project core rules, themes, and business logic for AI Agents
+---
+
+# Kushi Agro Foods - Project Guidelines for AI Agents
+
+## Core Design Themes
+1. **Maroon "Sold Out" Theme**: 
+   - All "Sold Out" (or `SOLDOUT`) indicators, badges, and buttons MUST use standard Maroon color.
+   - Primary Hex: `#800000` (Background)
+   - Secondary Hex: `#ffffff` (Text)
+
+2. **Action Badges**:
+   - Status indicators (Pass, Fail, Recheck, Medium, Sold Out) should use compact, rounded badges.
+
+## Business Logic Patterns
+1. **Serial Numbers (Sl No)** in Grouped Views (Sample Book, Cooking Report):
+   - **MUST RESET to 1** for every individual broker group.
+   - Do NOT use a global running Sl No across brokers for display purposes in these views.
+   - Example implementation: `riceEntries.map((entry, idx) => { const slNo = idx + 1; ... })`
+
+2. **Stable Sorting (Oldest First)**:
+   - Within any date and broker group, entries must be sorted by `createdAt ASC`.
+   - This ensures that when new entries are added, they appear at the bottom, and existing entries retain their Sl No.
+   - The primary sort is usually Date (DESC), then `createdAt` (ASC) within that date/broker bucket.
+
+3. **Persistent Identifiers**:
+   - The database maintains a `serialNo` (`serial_no` in DB) that is a global incrementing integer.
+   - Use this `serialNo` for flat list views (like Admin Sample Book flat view) where a global, persistent ID across all records is required.
+
+4. **Rice vs. Paddy**:
+   - The system distinguishes between Paddy Samples and Rice Samples via `entryType === 'RICE_SAMPLE'`.
+   - Rice samples have specific packaging logic (Loose, 26kg, 50kg, Tons) compared to Paddy.
+   - Rice samples have `broken` and `moisture` parameters but typically do not use `kandu`, `mixKandu`, etc.
+
+## TypeScript Interfaces
+- When adding sorting or ID logic, ensure the frontend interface (`SampleEntry`) includes `createdAt: string;` and `serialNo?: number;` to avoid TypeScript lint errors.
+
+## Backend Routes
+- Most sample operations go through `/sample-entries` and its sub-routes (`/lot-selection`, `/cooking-report`, `/offering-price`, `/final-price`).
+- Filtering logic on the backend uses the `req.user.role` to determine visibility constraints.
