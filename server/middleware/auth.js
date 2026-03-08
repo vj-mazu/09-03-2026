@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { resolveEffectiveRole } = require('../utils/roleResolver');
 
 // In-memory user cache — avoids DB hit on every request (30s TTL)
 const userCache = new Map();
@@ -30,6 +31,7 @@ const auth = async (req, res, next) => {
     const cacheKey = decoded.userId;
     const cached = userCache.get(cacheKey);
     if (cached && Date.now() - cached.time < USER_CACHE_TTL) {
+      decoded.effectiveRole = resolveEffectiveRole(decoded);
       req.user = decoded;
       return next();
     }
@@ -51,6 +53,7 @@ const auth = async (req, res, next) => {
 
     // Cache the verified user
     userCache.set(cacheKey, { time: Date.now() });
+    decoded.effectiveRole = resolveEffectiveRole(decoded);
     req.user = decoded;
     next();
   } catch (error) {
@@ -72,7 +75,8 @@ const authorize = (...roles) => {
       return res.status(401).json({ error: 'Access denied. Please login.' });
     }
 
-    if (!roles.includes(req.user.role)) {
+    const userRoles = [req.user.role, req.user.effectiveRole].filter(Boolean);
+    if (!roles.some(role => userRoles.includes(role))) {
       return res.status(403).json({ error: 'Access denied. Insufficient permissions.' });
     }
 

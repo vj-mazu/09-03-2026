@@ -16,6 +16,7 @@ const SampleEntryOffering = require('../models/SampleEntryOffering');
 const CookingReport = require('../models/CookingReport');
 const User = require('../models/User');
 const { Op } = require('sequelize');
+const getWorkflowRole = (user) => user?.effectiveRole || user?.role;
 
 // ─── Paddy Supervisors list (for Sample Collected By dropdown) ───
 router.get('/paddy-supervisors', authenticateToken, async (req, res) => {
@@ -68,7 +69,7 @@ router.post('/:id/send-to-quality', authenticateToken, async (req, res) => {
       entryId,
       'QUALITY_CHECK',
       req.user.userId,
-      req.user.role,
+      getWorkflowRole(req.user),
       { sentByStaff: true }
     );
 
@@ -110,7 +111,7 @@ router.get('/by-role', authenticateToken, async (req, res) => {
       excludeEntryType
     };
 
-    const result = await SampleEntryService.getSampleEntriesByRole(req.user.role, filters, req.user.userId);
+    const result = await SampleEntryService.getSampleEntriesByRole(getWorkflowRole(req.user), filters, req.user.userId);
     res.json(result);
   } catch (error) {
     console.error('Error getting sample entries:', error);
@@ -419,7 +420,7 @@ router.post('/:id/quality-parameters', authenticateToken, async (req, res) => {
         const quality = await QualityParametersService.addQualityParameters(
           qualityData,
           req.user.userId,
-          req.user.role
+          getWorkflowRole(req.user)
         );
 
         res.status(201).json(quality);
@@ -507,7 +508,7 @@ router.put('/:id/quality-parameters', authenticateToken, async (req, res) => {
           existing.id,
           updates,
           req.user.userId,
-          req.user.role
+          getWorkflowRole(req.user)
         );
 
         res.json(updated);
@@ -572,7 +573,7 @@ router.post('/:id/lot-selection', authenticateToken, async (req, res) => {
       req.params.id, // Keep as UUID string, don't parse to int
       nextStatus,
       req.user.userId, // Use userId from JWT token
-      req.user.role,
+      getWorkflowRole(req.user),
       { lotSelectionDecision: decision }
     );
 
@@ -605,7 +606,7 @@ router.post('/:id/cooking-report', authenticateToken, async (req, res) => {
     const report = await CookingReportService.createCookingReport(
       reportData,
       req.user.userId, // Use userId from JWT token
-      req.user.role
+      getWorkflowRole(req.user)
     );
 
     res.status(201).json(report);
@@ -636,7 +637,7 @@ router.post('/:id/final-price', authenticateToken, async (req, res) => {
   try {
     console.log(`[FINAL-PRICE] ===== START =====`);
     console.log(`[FINAL-PRICE] Entry ID: ${req.params.id}`);
-    console.log(`[FINAL-PRICE] User role: ${req.user.role}, userId: ${req.user.userId}`);
+    console.log(`[FINAL-PRICE] User role: ${getWorkflowRole(req.user)}, baseRole: ${req.user.role}, userId: ${req.user.userId}`);
     console.log(`[FINAL-PRICE] isFinalized: ${req.body.isFinalized}`);
     console.log(`[FINAL-PRICE] finalPrice: ${req.body.finalPrice}`);
 
@@ -644,7 +645,7 @@ router.post('/:id/final-price', authenticateToken, async (req, res) => {
       req.params.id,
       req.body,
       req.user.userId,
-      req.user.role
+      getWorkflowRole(req.user)
     );
 
     console.log(`[FINAL-PRICE] setFinalPrice succeeded. isFinalized in body: ${req.body.isFinalized}`);
@@ -656,12 +657,12 @@ router.post('/:id/final-price', authenticateToken, async (req, res) => {
         console.log(`[FINAL-PRICE] Entry found: ${!!entry}, workflowStatus: ${entry ? entry.workflowStatus : 'N/A'}`);
 
         if (entry && entry.workflowStatus === 'FINAL_REPORT') {
-          console.log(`[FINAL-PRICE] Transitioning ${req.params.id} to LOT_ALLOTMENT (Loading Lots) (Triggered by ${req.user.role})`);
+          console.log(`[FINAL-PRICE] Transitioning ${req.params.id} to LOT_ALLOTMENT (Loading Lots) (Triggered by ${getWorkflowRole(req.user)})`);
           await WorkflowEngine.transitionTo(
             req.params.id,
             'LOT_ALLOTMENT',
             req.user.userId,
-            req.user.role,
+            getWorkflowRole(req.user),
             { finalPriceSet: true }
           );
           console.log(`[FINAL-PRICE] ✅ Transition to LOT_ALLOTMENT (Loading Lots) SUCCEEDED!`);
@@ -696,7 +697,7 @@ router.post('/:id/transition', authenticateToken, async (req, res) => {
       req.params.id,
       toStatus,
       req.user.userId,
-      req.user.role,
+      getWorkflowRole(req.user),
       {}
     );
 
@@ -748,7 +749,7 @@ router.post('/:id/lot-allotment', authenticateToken, async (req, res) => {
     const allotment = await LotAllotmentService.createLotAllotment(
       allotmentData,
       req.user.userId, // Use userId from JWT token
-      req.user.role
+      getWorkflowRole(req.user)
     );
 
     res.status(201).json(allotment);
@@ -827,7 +828,7 @@ router.post('/:id/close-lot', authenticateToken, async (req, res) => {
       sampleEntryId,
       'INVENTORY_ENTRY',
       req.user.userId,
-      req.user.role,
+      getWorkflowRole(req.user),
       {
         closedByManager: true,
         inspectedBags,
@@ -880,7 +881,7 @@ router.post('/:id/physical-inspection', authenticateToken, async (req, res) => {
         const inspection = await PhysicalInspectionService.createPhysicalInspection(
           inspectionData,
           req.user.userId, // Use userId from JWT token
-          req.user.role
+          getWorkflowRole(req.user)
         );
 
         // Upload images if provided (optional - don't fail if images not provided)
@@ -947,7 +948,7 @@ router.post('/:id/inventory-data', authenticateToken, async (req, res) => {
     const inventory = await InventoryDataService.createInventoryData(
       inventoryData,
       req.user.userId, // Use userId from JWT token
-      req.user.role
+      getWorkflowRole(req.user)
     );
 
     res.status(201).json(inventory);
@@ -968,7 +969,7 @@ router.post('/:id/financial-calculation', authenticateToken, async (req, res) =>
     const calculation = await FinancialCalculationService.createFinancialCalculation(
       calculationData,
       req.user.userId, // Use userId from JWT token
-      req.user.role
+      getWorkflowRole(req.user)
     );
 
     res.status(201).json(calculation);
@@ -989,7 +990,7 @@ router.post('/:id/manager-financial-calculation', authenticateToken, async (req,
     const calculation = await FinancialCalculationService.createManagerFinancialCalculation(
       calculationData,
       req.user.userId, // Use userId from JWT token
-      req.user.role
+      getWorkflowRole(req.user)
     );
 
     res.status(201).json(calculation);
@@ -1019,7 +1020,7 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
       req.params.id, // Keep as UUID string
       'COMPLETED',
       req.user.userId, // Use userId from JWT token
-      req.user.role
+      getWorkflowRole(req.user)
     );
 
     // ═══════════════════════════════════════════════════════════════════════
