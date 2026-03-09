@@ -15,7 +15,7 @@ COPY server/ ./server/
 # --- Frontend Build ---
 FROM base AS frontend-build
 COPY client/package*.json ./client/
-RUN cd client && npm ci
+RUN cd client && npm install --legacy-peer-deps
 COPY client/ ./client/
 RUN cd client && npm run build
 
