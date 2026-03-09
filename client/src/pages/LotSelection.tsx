@@ -346,7 +346,7 @@ const LotSelection: React.FC<LotSelectionProps> = ({ entryType, excludeEntryType
                         </thead>
                         <tbody>
                           {brokerEntries.map((entry, index) => {
-                            const displaySlNo = index + 1;
+                            const displaySlNo = entry.serialNo || (index + 1);
                             const qp = entry.qualityParameters;
                             const fmtVal = (v: any, forceDecimal = false, precision = 2) => {
                               const fallback = entryType === 'RICE_SAMPLE' ? '--' : '-';

@@ -383,7 +383,7 @@ const RiceSampleBook: React.FC = () => {
                                                         const hasFullQuality = qp && ((qp.cutting1 && Number(qp.cutting1) !== 0) || (qp.bend1 && Number(qp.bend1) !== 0) || (qp.mix && Number(qp.mix) !== 0) || (qp.mixS && Number(qp.mixS) !== 0) || (qp.mixL && Number(qp.mixL) !== 0));
                                                         return (
                                                             <tr key={entry.id} style={{ backgroundColor: rowBg }}>
-                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>{idx + 1}</td>
+                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>{entry.serialNo || (idx + 1)}</td>
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap' }}>{entry.bags || '0'}</td>
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap' }}>{formatPackagingLabel(entry.packaging)}</td>
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '14px', cursor: 'pointer', color: '#1565c0', fontWeight: '600', textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}

@@ -102,7 +102,7 @@ router.post('/', authenticateToken, async (req, res) => {
 // Get sample entries by role
 router.get('/by-role', authenticateToken, async (req, res) => {
   try {
-    const { status, startDate, endDate, broker, variety, party, location, page, pageSize, entryType, excludeEntryType } = req.query;
+    const { status, startDate, endDate, broker, variety, party, location, page, pageSize, cursor, entryType, excludeEntryType } = req.query;
 
     const filters = {
       status,
@@ -114,6 +114,7 @@ router.get('/by-role', authenticateToken, async (req, res) => {
       location,
       page: page ? parseInt(page) : 1,
       pageSize: pageSize ? parseInt(pageSize) : 50,
+      cursor,
       staffType: req.user.staffType || null,
       entryType,
       excludeEntryType
@@ -136,6 +137,10 @@ router.get('/by-role', authenticateToken, async (req, res) => {
 });
 
 const { buildCursorQuery, formatCursorResponse } = require('../utils/cursorPagination');
+const {
+  SAMPLE_ENTRY_CURSOR_FIELDS,
+  fetchHydratedSampleEntryPage
+} = require('../utils/sampleEntryPagination');
 const { cacheMiddleware, invalidateCache } = require('../middleware/cache');
 
 // ─── TAB ROUTES (MUST be before /:id to avoid route shadowing) ───
@@ -196,7 +201,8 @@ const attachLoadingLotsHistories = async (rows) => {
           recordId: { [Op.in]: sampleEntryIds }
         },
         attributes: ['recordId', 'newValues', 'createdAt'],
-        order: [['createdAt', 'ASC']]
+        order: [['createdAt', 'ASC']],
+        raw: true
       })
       : [],
     qualityIds.length > 0
@@ -207,7 +213,8 @@ const attachLoadingLotsHistories = async (rows) => {
           recordId: { [Op.in]: qualityIds }
         },
         attributes: ['recordId', 'newValues', 'createdAt'],
-        order: [['createdAt', 'ASC']]
+        order: [['createdAt', 'ASC']],
+        raw: true
       })
       : []
   ]);
@@ -227,6 +234,7 @@ const attachLoadingLotsHistories = async (rows) => {
   });
 
   rows.forEach((row) => {
+    const target = row?.dataValues || row;
     const sampleCollectedHistory = [];
     const sampleEntryAuditLogs = sampleCollectedHistoryByEntryId.get(String(row?.id)) || [];
 
@@ -246,13 +254,13 @@ const attachLoadingLotsHistories = async (rows) => {
       sampleCollectedHistory.push(currentSampleCollectedBy);
     }
 
-    row.dataValues.sampleCollectedHistory = sampleCollectedHistory;
+    target.sampleCollectedHistory = sampleCollectedHistory;
 
     const qualityId = row?.qualityParameters?.id;
     if (!qualityId) {
-      row.dataValues.qualityReportHistory = [];
-      row.dataValues.qualityReportAttempts = 0;
-      row.dataValues.qualityAttemptDetails = [];
+      target.qualityReportHistory = [];
+      target.qualityReportAttempts = 0;
+      target.qualityAttemptDetails = [];
       return;
     }
 
@@ -288,12 +296,12 @@ const attachLoadingLotsHistories = async (rows) => {
       }
     }
 
-    row.dataValues.qualityReportHistory = history;
-    row.dataValues.qualityReportAttempts = Math.max(
+    target.qualityReportHistory = history;
+    target.qualityReportAttempts = Math.max(
       1,
       auditLogs.length > 0 ? auditLogs.length : history.length
     );
-    row.dataValues.qualityAttemptDetails = qualityAttemptDetails.map((detail, index) => ({
+    target.qualityAttemptDetails = qualityAttemptDetails.map((detail, index) => ({
       attemptNo: index + 1,
       ...detail
     }));
@@ -319,71 +327,47 @@ router.get('/tabs/loading-lots', authenticateToken, cacheMiddleware(30), async (
     if (excludeEntryType) where.entryType = { [Op.ne]: excludeEntryType };
 
     // Use cursor pagination if cursor provided, else fallback to offset
-    const paginationQuery = buildCursorQuery(req.query, 'DESC');
-    const mergedWhere = { ...where, ...paginationQuery.where };
+    const paginationQuery = buildCursorQuery(req.query, 'DESC', {
+      fields: SAMPLE_ENTRY_CURSOR_FIELDS
+    });
+    const result = await fetchHydratedSampleEntryPage({
+      model: SampleEntry,
+      baseWhere: where,
+      paginationQuery,
+      page: parseInt(page, 10),
+      pageSize: parseInt(pageSize, 10),
+      hydrateOptions: {
+        attributes: ['id', 'entryDate', 'brokerName', 'variety', 'partyName', 'location', 'bags', 'packaging', 'workflowStatus', 'createdAt', 'sampleCollectedBy', 'entryType', 'lorryNumber', 'lotSelectionDecision'],
+        include: [
+          {
+            model: QualityParameters,
+            as: 'qualityParameters',
+            attributes: [
+              'id', 'reportedBy', 'moisture', 'dryMoisture', 'cutting1', 'cutting2',
+              'bend1', 'bend2', 'mix', 'kandu', 'oil', 'sk', 'grainsCount',
+              'wbR', 'wbBk', 'wbT', 'paddyWb', 'gramsReport', 'createdAt', 'updatedAt'
+            ],
+            required: false
+          },
+          {
+            model: CookingReport,
+            as: 'cookingReport',
+            attributes: ['id', 'status', 'remarks'],
+            required: false
+          },
+          { model: SampleEntryOffering, as: 'offering' },
+          { model: User, as: 'creator', attributes: ['id', 'username'] }
+        ],
+        subQuery: false
+      }
+    });
 
-    if (paginationQuery.isCursor) {
-      const rows = await SampleEntry.findAll({
-        where: mergedWhere,
-        attributes: ['id', 'entryDate', 'brokerName', 'variety', 'partyName', 'location', 'bags', 'packaging', 'workflowStatus', 'createdAt', 'sampleCollectedBy', 'entryType', 'lorryNumber', 'lotSelectionDecision'],
-        include: [
-          {
-            model: QualityParameters,
-            as: 'qualityParameters',
-            attributes: [
-              'id', 'reportedBy', 'moisture', 'dryMoisture', 'cutting1', 'cutting2',
-              'bend1', 'bend2', 'mix', 'kandu', 'oil', 'sk', 'grainsCount',
-              'wbR', 'wbBk', 'wbT', 'paddyWb', 'gramsReport', 'createdAt', 'updatedAt'
-            ],
-            required: false
-          },
-          {
-            model: CookingReport,
-            as: 'cookingReport',
-            attributes: ['id', 'status', 'remarks'],
-            required: false
-          },
-          { model: SampleEntryOffering, as: 'offering' },
-          { model: User, as: 'creator', attributes: ['id', 'username'] }
-        ],
-        order: paginationQuery.order,
-        limit: paginationQuery.limit,
-        subQuery: false
-      });
-      await attachLoadingLotsHistories(rows);
-      const response = formatCursorResponse(rows, paginationQuery.limit);
-      res.json({ entries: response.data, pagination: response.pagination });
+    await attachLoadingLotsHistories(result.entries);
+
+    if (result.pagination) {
+      res.json({ entries: result.entries, pagination: result.pagination });
     } else {
-      const { count, rows } = await SampleEntry.findAndCountAll({
-        where: mergedWhere,
-        attributes: ['id', 'entryDate', 'brokerName', 'variety', 'partyName', 'location', 'bags', 'packaging', 'workflowStatus', 'createdAt', 'sampleCollectedBy', 'entryType', 'lorryNumber', 'lotSelectionDecision'],
-        include: [
-          {
-            model: QualityParameters,
-            as: 'qualityParameters',
-            attributes: [
-              'id', 'reportedBy', 'moisture', 'dryMoisture', 'cutting1', 'cutting2',
-              'bend1', 'bend2', 'mix', 'kandu', 'oil', 'sk', 'grainsCount',
-              'wbR', 'wbBk', 'wbT', 'paddyWb', 'gramsReport', 'createdAt', 'updatedAt'
-            ],
-            required: false
-          },
-          {
-            model: CookingReport,
-            as: 'cookingReport',
-            attributes: ['id', 'status', 'remarks'],
-            required: false
-          },
-          { model: SampleEntryOffering, as: 'offering' },
-          { model: User, as: 'creator', attributes: ['id', 'username'] }
-        ],
-        order: [['entryDate', 'DESC'], ['createdAt', 'DESC']],
-        limit: paginationQuery.limit,
-        offset: paginationQuery.offset,
-        subQuery: false
-      });
-      await attachLoadingLotsHistories(rows);
-      res.json({ entries: rows, total: count, page: parseInt(page), pageSize: parseInt(pageSize) });
+      res.json({ entries: result.entries, total: result.total, page: parseInt(page, 10), pageSize: parseInt(pageSize, 10) });
     }
   } catch (error) {
     console.error('Error getting loading lots:', error.message);
@@ -485,7 +469,9 @@ router.get('/tabs/final-pass-lots', authenticateToken, cacheMiddleware(15), asyn
       }
     ];
 
-    const paginationQuery = buildCursorQuery(req.query, 'DESC');
+    const paginationQuery = buildCursorQuery(req.query, 'DESC', {
+      fields: SAMPLE_ENTRY_CURSOR_FIELDS
+    });
     if (paginationQuery.where && Object.keys(paginationQuery.where).length) {
       conditionBlocks.push(paginationQuery.where);
     }
@@ -509,7 +495,9 @@ router.get('/tabs/final-pass-lots', authenticateToken, cacheMiddleware(15), asyn
         subQuery: false
       });
 
-      const response = formatCursorResponse(rows, paginationQuery.limit);
+      const response = formatCursorResponse(rows, paginationQuery.limit, null, {
+        fields: SAMPLE_ENTRY_CURSOR_FIELDS
+      });
       return res.json({ entries: response.data, pagination: response.pagination });
     }
 
@@ -551,35 +539,28 @@ router.get('/tabs/completed-lots', authenticateToken, cacheMiddleware(30), async
     if (entryType) where.entryType = entryType;
     if (excludeEntryType) where.entryType = { [Op.ne]: excludeEntryType };
 
-    const paginationQuery = buildCursorQuery(req.query, 'DESC');
-    const mergedWhere = { ...where, ...paginationQuery.where };
+    const paginationQuery = buildCursorQuery(req.query, 'DESC', {
+      fields: SAMPLE_ENTRY_CURSOR_FIELDS
+    });
+    const result = await fetchHydratedSampleEntryPage({
+      model: SampleEntry,
+      baseWhere: where,
+      paginationQuery,
+      page: parseInt(page, 10),
+      pageSize: parseInt(pageSize, 10),
+      hydrateOptions: {
+        include: [
+          { model: QualityParameters, as: 'qualityParameters' },
+          { model: SampleEntryOffering, as: 'offering' },
+          { model: User, as: 'creator', attributes: ['id', 'username'] }
+        ]
+      }
+    });
 
-    if (paginationQuery.isCursor) {
-      const rows = await SampleEntry.findAll({
-        where: mergedWhere,
-        include: [
-          { model: QualityParameters, as: 'qualityParameters' },
-          { model: SampleEntryOffering, as: 'offering' },
-          { model: User, as: 'creator', attributes: ['id', 'username'] }
-        ],
-        order: paginationQuery.order,
-        limit: paginationQuery.limit
-      });
-      const response = formatCursorResponse(rows, paginationQuery.limit);
-      res.json({ entries: response.data, pagination: response.pagination });
+    if (result.pagination) {
+      res.json({ entries: result.entries, pagination: result.pagination });
     } else {
-      const { count, rows } = await SampleEntry.findAndCountAll({
-        where: mergedWhere,
-        include: [
-          { model: QualityParameters, as: 'qualityParameters' },
-          { model: SampleEntryOffering, as: 'offering' },
-          { model: User, as: 'creator', attributes: ['id', 'username'] }
-        ],
-        order: [['entryDate', 'DESC'], ['createdAt', 'DESC']],
-        limit: paginationQuery.limit,
-        offset: paginationQuery.offset
-      });
-      res.json({ entries: rows, total: count, page: parseInt(page), pageSize: parseInt(pageSize) });
+      res.json({ entries: result.entries, total: result.total, page: parseInt(page, 10), pageSize: parseInt(pageSize, 10) });
     }
   } catch (error) {
     console.error('Error getting completed lots:', error);
@@ -601,37 +582,29 @@ router.get('/tabs/sample-book', authenticateToken, cacheMiddleware(30), async (r
     if (entryType) where.entryType = entryType;
     if (excludeEntryType) where.entryType = { [Op.ne]: excludeEntryType };
 
-    const paginationQuery = buildCursorQuery(req.query, 'DESC');
-    const mergedWhere = { ...where, ...paginationQuery.where };
+    const paginationQuery = buildCursorQuery(req.query, 'DESC', {
+      fields: SAMPLE_ENTRY_CURSOR_FIELDS
+    });
+    const result = await fetchHydratedSampleEntryPage({
+      model: SampleEntry,
+      baseWhere: where,
+      paginationQuery,
+      page: parseInt(page, 10),
+      pageSize: parseInt(pageSize, 10),
+      hydrateOptions: {
+        include: [
+          { model: QualityParameters, as: 'qualityParameters' },
+          { model: CookingReport, as: 'cookingReport' },
+          { model: SampleEntryOffering, as: 'offering' },
+          { model: User, as: 'creator', attributes: ['id', 'username'] }
+        ]
+      }
+    });
 
-    if (paginationQuery.isCursor) {
-      const rows = await SampleEntry.findAll({
-        where: mergedWhere,
-        include: [
-          { model: QualityParameters, as: 'qualityParameters' },
-          { model: CookingReport, as: 'cookingReport' },
-          { model: SampleEntryOffering, as: 'offering' },
-          { model: User, as: 'creator', attributes: ['id', 'username'] }
-        ],
-        order: paginationQuery.order,
-        limit: paginationQuery.limit
-      });
-      const response = formatCursorResponse(rows, paginationQuery.limit);
-      res.json({ entries: response.data, pagination: response.pagination });
+    if (result.pagination) {
+      res.json({ entries: result.entries, pagination: result.pagination });
     } else {
-      const { count, rows } = await SampleEntry.findAndCountAll({
-        where: mergedWhere,
-        include: [
-          { model: QualityParameters, as: 'qualityParameters' },
-          { model: CookingReport, as: 'cookingReport' },
-          { model: SampleEntryOffering, as: 'offering' },
-          { model: User, as: 'creator', attributes: ['id', 'username'] }
-        ],
-        order: [['entryDate', 'DESC'], ['createdAt', 'DESC']],
-        limit: paginationQuery.limit,
-        offset: paginationQuery.offset
-      });
-      res.json({ entries: rows, total: count, page: parseInt(page), pageSize: parseInt(pageSize) });
+      res.json({ entries: result.entries, total: result.total, page: parseInt(page, 10), pageSize: parseInt(pageSize, 10) });
     }
   } catch (error) {
     console.error('Error getting sample book:', error);
@@ -1533,7 +1506,7 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
 // Get sample entry ledger
 router.get('/ledger/all', authenticateToken, async (req, res) => {
   try {
-    const { startDate, endDate, broker, variety, party, location, status, limit, page, pageSize, entryType, excludeEntryType } = req.query;
+    const { startDate, endDate, broker, variety, party, location, status, limit, page, pageSize, cursor, entryType, excludeEntryType } = req.query;
 
     const filters = {
       startDate: startDate ? new Date(startDate) : undefined,
@@ -1546,6 +1519,7 @@ router.get('/ledger/all', authenticateToken, async (req, res) => {
       limit: limit ? parseInt(limit) : undefined,
       page: page ? parseInt(page) : 1,
       pageSize: pageSize ? parseInt(pageSize) : 100,
+      cursor,
       entryType,
       excludeEntryType
     };

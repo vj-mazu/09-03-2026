@@ -866,7 +866,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                               </thead>
                               <tbody>
                                 {paddyEntries.map((entry, idx) => {
-                                  const slNo = idx + 1;
+                                  const slNo = entry.serialNo || (idx + 1);
 
                                   // Determine Quality Info (Pass)
                                   let objQuality: React.ReactNode = '-';
@@ -1024,7 +1024,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                               </thead>
                               <tbody>
                                 {riceEntries.map((entry, idx) => {
-                                  const slNo = idx + 1;
+                                  const slNo = entry.serialNo || (idx + 1);
                                   return (
                                     <tr key={entry.id}>
                                       <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '13px' }}>{slNo}</td>

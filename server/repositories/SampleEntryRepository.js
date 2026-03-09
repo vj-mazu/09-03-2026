@@ -2,6 +2,12 @@ const { SampleEntry, User, QualityParameters, CookingReport, LotAllotment, Physi
 const { Variety } = require('../models/Location');
 const SampleEntryOffering = require('../models/SampleEntryOffering');
 const { Op } = require('sequelize');
+const { buildCursorQuery, formatCursorResponse } = require('../utils/cursorPagination');
+const {
+  SAMPLE_ENTRY_CURSOR_FIELDS,
+  fetchHydratedSampleEntryPage,
+  mergeWhereClauses
+} = require('../utils/sampleEntryPagination');
 
 class SampleEntryRepository {
   async create(entryData) {
@@ -253,41 +259,73 @@ class SampleEntryRepository {
 
     // Removed: Location staff restriction moved to frontend so they can view the Sample Book
 
-    // Pagination
-    const page = filters.page || 1;
-    const pageSize = filters.pageSize || 50;
-    const offset = (page - 1) * pageSize;
+    const page = Math.max(1, parseInt(filters.page, 10) || 1);
+    const pageSize = Math.max(1, parseInt(filters.pageSize, 10) || 50);
+    const paginationQuery = buildCursorQuery(filters, 'DESC', {
+      fields: SAMPLE_ENTRY_CURSOR_FIELDS
+    });
+    const requiresJoinFiltering = include.some((item) => item.required || item.where);
 
-    const queryOptions = {
-      where,
-      include,
-      limit: pageSize,
-      offset,
-      order: [['entryDate', 'DESC'], ['createdAt', 'DESC']],
-      distinct: true,
-      subQuery: false
-    };
-
-    // PERFORMANCE: Only count on first page to avoid expensive COUNT on large tables
-    if (page === 1) {
-      const { count, rows } = await SampleEntry.findAndCountAll(queryOptions);
-      return {
-        entries: rows.map(entry => entry.toJSON()),
-        total: count,
-        page,
-        pageSize,
-        totalPages: Math.ceil(count / pageSize)
+    if (requiresJoinFiltering) {
+      const queryOptions = {
+        where: mergeWhereClauses(where, paginationQuery.where),
+        include,
+        limit: paginationQuery.limit,
+        ...(paginationQuery.isCursor ? {} : { offset: paginationQuery.offset }),
+        order: paginationQuery.order,
+        distinct: true,
+        subQuery: false
       };
-    } else {
+
+      if (paginationQuery.isCursor) {
+        const rows = await SampleEntry.findAll(queryOptions);
+        const response = formatCursorResponse(rows, paginationQuery.limit, null, {
+          fields: SAMPLE_ENTRY_CURSOR_FIELDS
+        });
+        return {
+          entries: response.data.map((entry) => entry.toJSON()),
+          pagination: response.pagination
+        };
+      }
+
+      if (page === 1) {
+        const { count, rows } = await SampleEntry.findAndCountAll(queryOptions);
+        return {
+          entries: rows.map((entry) => entry.toJSON()),
+          total: count,
+          page,
+          pageSize,
+          totalPages: Math.ceil(count / pageSize)
+        };
+      }
+
       const rows = await SampleEntry.findAll(queryOptions);
       return {
-        entries: rows.map(entry => entry.toJSON()),
+        entries: rows.map((entry) => entry.toJSON()),
         total: null, // Frontend should cache total from page 1
         page,
         pageSize,
         totalPages: null
       };
     }
+
+    const result = await fetchHydratedSampleEntryPage({
+      model: SampleEntry,
+      baseWhere: where,
+      paginationQuery,
+      hydrateOptions: {
+        include,
+        subQuery: false
+      },
+      page,
+      pageSize,
+      countOnPageOneOnly: true
+    });
+
+    return {
+      ...result,
+      entries: result.entries.map((entry) => entry.toJSON())
+    };
   }
 
   async update(id, updates) {
@@ -317,120 +355,66 @@ class SampleEntryRepository {
       where.entryType = { [Op.ne]: filters.excludeEntryType };
     }
 
-    const page = filters.page || 1;
-    const pageSize = filters.pageSize || 50;
-    const offset = (page - 1) * pageSize;
-
-    // PERFORMANCE: Only count on first page
-    if (page === 1) {
-      const { count, rows } = await SampleEntry.findAndCountAll({
-        where,
+    const page = Math.max(1, parseInt(filters.page, 10) || 1);
+    const pageSize = Math.max(1, parseInt(filters.pageSize, 10) || 50);
+    const paginationQuery = buildCursorQuery(filters, 'DESC', {
+      fields: SAMPLE_ENTRY_CURSOR_FIELDS
+    });
+    const include = [
+      { model: User, as: 'creator', attributes: ['id', 'username'] },
+      {
+        model: QualityParameters, as: 'qualityParameters', required: false,
+        include: [{ model: User, as: 'reportedByUser', attributes: ['id', 'username'] }]
+      },
+      { model: User, as: 'lotSelectionByUser', attributes: ['id', 'username'] },
+      { model: CookingReport, as: 'cookingReport', required: false },
+      { model: SampleEntryOffering, as: 'offering', required: false },
+      {
+        model: LotAllotment, as: 'lotAllotment', required: false,
         include: [
-          { model: User, as: 'creator', attributes: ['id', 'username'] },
+          { model: User, as: 'supervisor', attributes: ['id', 'username'] },
           {
-            model: QualityParameters, as: 'qualityParameters', required: false,
-            include: [{ model: User, as: 'reportedByUser', attributes: ['id', 'username'] }]
-          },
-          { model: User, as: 'lotSelectionByUser', attributes: ['id', 'username'] },
-          { model: CookingReport, as: 'cookingReport', required: false },
-          { model: SampleEntryOffering, as: 'offering', required: false },
-          {
-            model: LotAllotment, as: 'lotAllotment', required: false,
+            model: PhysicalInspection, as: 'physicalInspections', required: false,
             include: [
-              { model: User, as: 'supervisor', attributes: ['id', 'username'] },
+              { model: User, as: 'reportedBy', attributes: ['id', 'username'] },
               {
-                model: PhysicalInspection, as: 'physicalInspections', required: false,
+                model: InventoryData, as: 'inventoryData', required: false,
                 include: [
-                  { model: User, as: 'reportedBy', attributes: ['id', 'username'] },
+                  { model: User, as: 'recordedBy', attributes: ['id', 'username'] },
                   {
-                    model: InventoryData, as: 'inventoryData', required: false,
+                    model: FinancialCalculation, as: 'financialCalculation', required: false,
                     include: [
-                      { model: User, as: 'recordedBy', attributes: ['id', 'username'] },
-                      {
-                        model: FinancialCalculation, as: 'financialCalculation', required: false,
-                        include: [
-                          { model: User, as: 'owner', attributes: ['id', 'username'] },
-                          { model: User, as: 'manager', attributes: ['id', 'username'] }
-                        ]
-                      },
-                      { model: Kunchinittu, as: 'kunchinittu', required: false, include: [{ model: Variety, as: 'variety', attributes: ['id', 'name'] }] },
-                      { model: Outturn, as: 'outturn', required: false }
+                      { model: User, as: 'owner', attributes: ['id', 'username'] },
+                      { model: User, as: 'manager', attributes: ['id', 'username'] }
                     ]
-                  }
+                  },
+                  { model: Kunchinittu, as: 'kunchinittu', required: false, include: [{ model: Variety, as: 'variety', attributes: ['id', 'name'] }] },
+                  { model: Outturn, as: 'outturn', required: false }
                 ]
               }
             ]
           }
-        ],
-        order: [['entryDate', 'DESC'], ['createdAt', 'DESC']],
-        limit: pageSize,
-        offset,
-        distinct: true,
-        subQuery: false
-      });
+        ]
+      }
+    ];
 
-      return {
-        entries: rows.map(entry => entry.toJSON()),
-        total: count,
-        page,
-        pageSize,
-        totalPages: Math.ceil(count / pageSize)
-      };
-    } else {
-      const rows = await SampleEntry.findAll({
-        where,
-        include: [
-          { model: User, as: 'creator', attributes: ['id', 'username'] },
-          {
-            model: QualityParameters, as: 'qualityParameters', required: false,
-            include: [{ model: User, as: 'reportedByUser', attributes: ['id', 'username'] }]
-          },
-          { model: User, as: 'lotSelectionByUser', attributes: ['id', 'username'] },
-          { model: CookingReport, as: 'cookingReport', required: false },
-          { model: SampleEntryOffering, as: 'offering', required: false },
-          {
-            model: LotAllotment, as: 'lotAllotment', required: false,
-            include: [
-              { model: User, as: 'supervisor', attributes: ['id', 'username'] },
-              {
-                model: PhysicalInspection, as: 'physicalInspections', required: false,
-                include: [
-                  { model: User, as: 'reportedBy', attributes: ['id', 'username'] },
-                  {
-                    model: InventoryData, as: 'inventoryData', required: false,
-                    include: [
-                      { model: User, as: 'recordedBy', attributes: ['id', 'username'] },
-                      {
-                        model: FinancialCalculation, as: 'financialCalculation', required: false,
-                        include: [
-                          { model: User, as: 'owner', attributes: ['id', 'username'] },
-                          { model: User, as: 'manager', attributes: ['id', 'username'] }
-                        ]
-                      },
-                      { model: Kunchinittu, as: 'kunchinittu', required: false, include: [{ model: Variety, as: 'variety', attributes: ['id', 'name'] }] },
-                      { model: Outturn, as: 'outturn', required: false }
-                    ]
-                  }
-                ]
-              }
-            ]
-          }
-        ],
-        order: [['entryDate', 'DESC'], ['createdAt', 'DESC']],
-        limit: pageSize,
-        offset,
-        distinct: true,
+    const result = await fetchHydratedSampleEntryPage({
+      model: SampleEntry,
+      baseWhere: where,
+      paginationQuery,
+      hydrateOptions: {
+        include,
         subQuery: false
-      });
+      },
+      page,
+      pageSize,
+      countOnPageOneOnly: true
+    });
 
-      return {
-        entries: rows.map(entry => entry.toJSON()),
-        total: null,
-        page,
-        pageSize,
-        totalPages: null
-      };
-    }
+    return {
+      ...result,
+      entries: result.entries.map((entry) => entry.toJSON())
+    };
   }
 }
 

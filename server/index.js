@@ -1439,6 +1439,15 @@ const startServer = async () => {
       } catch (error) {
         console.log('Migration 110 warning:', error.message);
       }
+
+      // Migration 111: Add 20M-scale sample workflow indexes
+      try {
+        const add20MIndexes = require('./migrations/111_add_sample_entry_20m_indexes');
+        await add20MIndexes.up();
+        console.log('Migration 111: 20M sample workflow indexes added');
+      } catch (error) {
+        console.log('Migration 111 warning:', error.message);
+      }
       // Migration 96b: Add bend2 column to physical_inspections table
       try {
         const addBend2ToPhysicalInspections = require('./migrations/96_add_bend2_to_physical_inspections');

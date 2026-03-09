@@ -6,6 +6,7 @@ import { API_URL } from '../config/api';
 
 interface SampleEntry {
   id: string;
+  serialNo?: number;
   entryDate: string;
   brokerName: string;
   variety: string;
@@ -438,7 +439,7 @@ const LoadingLots: React.FC<LoadingLotsProps> = ({ entryType, excludeEntryType }
                           if (isRiceMode) {
                             return (
                               <tr key={entry.id} style={{ background: rowBg }}>
-                                <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontWeight: 600, fontSize: '14px' }}>{index + 1 + (page - 1) * pageSize}</td>
+                                <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontWeight: 600, fontSize: '14px' }}>{entry.serialNo || (index + 1 + (page - 1) * pageSize)}</td>
                                 <td style={{ border: '1px solid #000', padding: '1px 3px', textAlign: 'center', verticalAlign: 'middle' }}>{entry.entryType === 'DIRECT_LOADED_VEHICLE' ? <span style={{ color: 'white', backgroundColor: '#1565c0', padding: '1px 4px', borderRadius: '3px', fontSize: '10px', fontWeight: 800 }}>RL</span> : entry.entryType === 'LOCATION_SAMPLE' ? <span style={{ color: 'white', backgroundColor: '#e67e22', padding: '1px 4px', borderRadius: '3px', fontSize: '10px', fontWeight: 800 }}>LS</span> : <span style={{ color: '#333', backgroundColor: '#fff', padding: '1px 4px', borderRadius: '3px', fontSize: '10px', fontWeight: 800, border: '1px solid #ccc' }}>MS</span>}</td>
                                 <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontWeight: 600, fontSize: '14px' }}>{entry.bags?.toLocaleString('en-IN')}</td>
                                 <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '14px' }}>{entry.packaging || '-'}</td>
@@ -459,7 +460,7 @@ const LoadingLots: React.FC<LoadingLotsProps> = ({ entryType, excludeEntryType }
 
                           return (
                             <tr key={entry.id} style={{ background: rowBg }}>
-                              <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: 700 }}>{index + 1 + (page - 1) * pageSize}</td>
+                              <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: 700 }}>{entry.serialNo || (index + 1 + (page - 1) * pageSize)}</td>
                               <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center' }}><span style={{ display: 'inline-block', minWidth: '28px', padding: '1px 4px', borderRadius: '3px', fontSize: '10px', fontWeight: 800, color: typeCode === 'RL' || typeCode === 'LS' ? '#fff' : '#333', backgroundColor: typeCode === 'RL' ? '#1565c0' : typeCode === 'LS' ? '#e67e22' : '#fff', border: typeCode === 'MS' ? '1px solid #ccc' : 'none' }}>{typeCode}</span></td>
                               <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: 700, fontSize: '13px' }}>{entry.bags?.toLocaleString('en-IN') || '-'}</td>
                               <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '13px' }}>{entry.packaging || '-'}</td>

@@ -136,6 +136,11 @@ const formatShortDateTime = (value?: string | null) => {
     }
 };
 
+const getResampleRoundLabel = (attempts: number) => {
+    if (attempts <= 1) return '';
+    return `Re-sample Round ${attempts}`;
+};
+
 interface AdminSampleBook2Props {
     entryType?: string;
     excludeEntryType?: string;
@@ -276,7 +281,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
 
             if (!isRiceBook) {
                 return (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', width: '100%' }}>
                         <span style={{ background: bg, color, padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>{label}</span>
                         {result === 'recheck' && cr.remarks && (
                             <span title={cr.remarks} style={{ color: '#8e24aa', fontSize: '9px', fontWeight: '700', cursor: 'help' }}>💬 Remarks</span>
@@ -349,8 +354,11 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
         return (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
                 {resampleAttempts > 1 && (
-                    <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '10px', backgroundColor: '#ffedd5', color: '#7c2d12', fontWeight: '700', whiteSpace: 'nowrap' as const, border: '1px solid #fdba74' }}>
-                        Re-sample {resampleAttempts}
+                    <span
+                        title={`This paddy lot reached quality attempt ${resampleAttempts}`}
+                        style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '10px', backgroundColor: '#ffedd5', color: '#7c2d12', fontWeight: '700', whiteSpace: 'nowrap' as const, border: '1px solid #fdba74' }}
+                    >
+                        {getResampleRoundLabel(resampleAttempts)}
                     </span>
                 )}
                 <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '10px', backgroundColor: bg, color, fontWeight: '600', whiteSpace: 'nowrap' as const }}>{label}</span>
@@ -519,10 +527,10 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '9%' }}>Variety</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>Sample Collected By</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '11%' }}>Quality Report</th>
-                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: isRiceBook ? '12%' : '6%' }}>Cooking Report</th>
-                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '5.5%' }}>Offer</th>
-                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '5.5%' }}>Final</th>
-                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '7%' }}>Status</th>
+                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: isRiceBook ? '12%' : '8.5%' }}>Cooking Report</th>
+                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '7%' }}>Offer</th>
+                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '6%' }}>Final</th>
+                                                        <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '8.5%' }}>Status</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -546,7 +554,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                                         const hasFullQuality = qp && ((qp.cutting1 && Number(qp.cutting1) !== 0) || (qp.bend1 && Number(qp.bend1) !== 0) || (qp.mix && Number(qp.mix) !== 0) || (qp.mixS && Number(qp.mixS) !== 0) || (qp.mixL && Number(qp.mixL) !== 0));
                                                         return (
                                                             <tr key={entry.id} style={{ backgroundColor: rowBg }}>
-                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>{idx + 1}</td>
+                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>{entry.serialNo || (idx + 1)}</td>
                                                                 {!isRiceBook && (
                                                                     <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap' }}>
                                                                         {entry.entryType === 'LOCATION_SAMPLE' ? 'LS' : entry.entryType === 'DIRECT_LOADED_VEHICLE' ? 'RL' : 'MS'}
@@ -572,20 +580,21 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                                                     padding: '3px 4px',
                                                                     fontSize: '11px',
                                                                     textAlign: isRiceBook ? 'left' : 'center',
-                                                                    whiteSpace: isRiceBook ? 'normal' : 'nowrap',
-                                                                    lineHeight: isRiceBook ? '1.2' : '1',
-                                                                    verticalAlign: isRiceBook ? 'top' : 'middle'
+                                                                    whiteSpace: 'normal',
+                                                                    lineHeight: '1.2',
+                                                                    verticalAlign: 'middle',
+                                                                    minWidth: isRiceBook ? undefined : '104px'
                                                                 }}>
                                                                     {cookingBadge(entry)}
                                                                 </td>
                                                                 <td
                                                                     onClick={() => entry.offering?.offerBaseRateValue || entry.offering?.offeringPrice ? setPricingDetail({ entry, mode: 'offer' }) : null}
-                                                                    style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', cursor: entry.offering?.offerBaseRateValue || entry.offering?.offeringPrice ? 'pointer' : 'default' }}
+                                                                    style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere', minWidth: '116px', cursor: entry.offering?.offerBaseRateValue || entry.offering?.offeringPrice ? 'pointer' : 'default' }}
                                                                 >
                                                                     {entry.offering?.offerBaseRateValue ? (
-                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'center' }}>
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'center', width: '100%' }}>
                                                                             <span style={{ fontWeight: '700', color: '#1565c0', fontSize: '11px' }}>Rs {toNumberText(entry.offering.offerBaseRateValue)}</span>
-                                                                            <span style={{ fontSize: '9px', color: '#5f6368', fontWeight: '700' }}>{(entry.offering.baseRateType || '').replace(/_/g, '/')} / {formatRateUnitLabel(entry.offering.baseRateUnit)}</span>
+                                                                            <span style={{ fontSize: '9px', color: '#5f6368', fontWeight: '700', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere', lineHeight: '1.2' }}>{(entry.offering.baseRateType || '').replace(/_/g, '/')} / {formatRateUnitLabel(entry.offering.baseRateUnit)}</span>
                                                                         </div>
                                                                     ) : entry.offering?.offeringPrice ? (
                                                                         <span style={{ fontWeight: '700', color: '#1565c0', fontSize: '11px' }}>Rs {toNumberText(entry.offering.offeringPrice)}</span>
@@ -593,18 +602,18 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                                                 </td>
                                                                 <td
                                                                     onClick={() => entry.offering?.finalPrice || entry.offering?.finalBaseRate ? setPricingDetail({ entry, mode: 'final' }) : null}
-                                                                    style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', cursor: entry.offering?.finalPrice || entry.offering?.finalBaseRate ? 'pointer' : 'default' }}
+                                                                    style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere', minWidth: '104px', cursor: entry.offering?.finalPrice || entry.offering?.finalBaseRate ? 'pointer' : 'default' }}
                                                                 >
                                                                     {entry.offering?.finalPrice ? (
-                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'center' }}>
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'center', width: '100%' }}>
                                                                             <span style={{ fontWeight: '700', color: '#2e7d32', fontSize: '11px' }}>Rs {toNumberText(entry.offering.finalPrice)}</span>
-                                                                            <span style={{ fontSize: '9px', color: '#5f6368', fontWeight: '700' }}>{(entry.offering.baseRateType || '').replace(/_/g, '/')} / {formatRateUnitLabel(entry.offering.baseRateUnit)}</span>
+                                                                            <span style={{ fontSize: '9px', color: '#5f6368', fontWeight: '700', whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere', lineHeight: '1.2' }}>{(entry.offering.baseRateType || '').replace(/_/g, '/')} / {formatRateUnitLabel(entry.offering.baseRateUnit)}</span>
                                                                         </div>
                                                                     ) : entry.offering?.finalBaseRate ? (
                                                                         <span style={{ fontWeight: '700', color: '#2e7d32', fontSize: '11px' }}>Rs {toNumberText(entry.offering.finalBaseRate)}</span>
                                                                     ) : '-'}
                                                                 </td>
-                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', whiteSpace: 'nowrap' }}>{statusBadge(entry)}</td>
+                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', whiteSpace: 'normal', minWidth: '108px' }}>{statusBadge(entry)}</td>
                                                             </tr>
                                                         );
                                                     })}

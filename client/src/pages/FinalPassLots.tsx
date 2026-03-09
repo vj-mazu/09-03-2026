@@ -982,7 +982,7 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                         <tbody>
                           {brokerEntries.map((entry, index) => {
                             const o = offeringCache[entry.id] || entry.offering;
-                            const slNo = index + 1;
+                            const slNo = entry.serialNo || (index + 1);
                             const rowType = entry.entryType === 'DIRECT_LOADED_VEHICLE' ? 'RL' : entry.entryType === 'LOCATION_SAMPLE' ? 'LS' : 'MS';
                             const qp = entry.qualityParameters || {};
                             const cp = entry.cookingReport || {};
