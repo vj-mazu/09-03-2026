@@ -353,16 +353,22 @@ const LotSelection: React.FC<LotSelectionProps> = ({ entryType, excludeEntryType
                               if (v == null || v === '') return fallback;
                               const n = Number(v);
                               if (isNaN(n) || n === 0) return fallback;
-                              if (forceDecimal) return n.toFixed(1);
-                              if (precision > 2) return String(parseFloat(n.toFixed(precision)));
-                              return n % 1 === 0 ? String(Math.round(n)) : String(parseFloat(n.toFixed(2)));
+                              if (forceDecimal) return n.toFixed(precision);
+                              if (entryType === 'RICE_SAMPLE') return n.toFixed(precision);
+                              return n % 1 === 0 ? String(Math.round(n)) : String(parseFloat(n.toFixed(precision)));
                             };
                             const fallback = entryType === 'RICE_SAMPLE' ? '--' : '-';
                             const fmtRiceDecimal = (v: any) => {
                               if (v == null || v === '') return fallback;
                               const n = Number(v);
                               if (isNaN(n) || n === 0) return fallback;
-                              return n.toFixed(1);
+                              return n.toFixed(2);
+                            };
+                            const fmtWhole = (v: any) => {
+                              if (v == null || v === '') return fallback;
+                              const n = Number(v);
+                              if (isNaN(n) || n === 0) return fallback;
+                              return String(Math.round(n));
                             };
                             const hasFullQuality = qp && ((qp.cutting1 && Number(qp.cutting1) !== 0) || (qp.bend1 && Number(qp.bend1) !== 0) || (qp.mix && Number(qp.mix) !== 0));
                             const has100Grams = qp && (qp.moisture != null || (qp as any).dryMoisture != null) && !hasFullQuality;
@@ -389,12 +395,12 @@ const LotSelection: React.FC<LotSelectionProps> = ({ entryType, excludeEntryType
                                     <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                       {entry.sampleCollectedBy ? toTitleCase(entry.sampleCollectedBy) : (entry as any).creator?.username ? toTitleCase((entry as any).creator.username) : '-'}
                                     </td>
-                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '12px', color: '#000' }}>{qp?.grainsCount ? `(${fmtVal(qp.grainsCount)})` : '-'}</td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '12px', color: '#000' }}>{qp?.grainsCount ? `(${fmtWhole(qp.grainsCount)})` : '-'}</td>
                                     <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
                                       {qp && (fmtVal(qp.moisture) !== '-' || (qp as any).dryMoisture != null) ? (
                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                                          {fmtVal((qp as any).dryMoisture) !== '-' && <div style={{ fontSize: '10px', color: '#e67e22', fontWeight: '800' }}>{fmtVal((qp as any).dryMoisture, false, 3)}%</div>}
-                                          <div>{fmtVal(qp.moisture, false, 3)}%</div>
+                                          {fmtVal((qp as any).dryMoisture) !== '-' && <div style={{ fontSize: '10px', color: '#e67e22', fontWeight: '800' }}>{fmtVal((qp as any).dryMoisture, false, 2)}%</div>}
+                                          <div>{fmtVal(qp.moisture, false, 2)}%</div>
                                         </div>
                                       ) : '-'}
                                     </td>
@@ -469,12 +475,12 @@ const LotSelection: React.FC<LotSelectionProps> = ({ entryType, excludeEntryType
                                     <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'left', verticalAlign: 'middle', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                       {entry.sampleCollectedBy ? toTitleCase(entry.sampleCollectedBy) : (entry as any).creator?.username ? toTitleCase((entry as any).creator.username) : '-'}
                                     </td>
-                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '12px', color: '#000' }}>{qp?.grainsCount ? `(${fmtVal(qp.grainsCount)})` : fallback}</td>
+                                    <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '12px', color: '#000' }}>{qp?.grainsCount ? `(${fmtWhole(qp.grainsCount)})` : fallback}</td>
                                     <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontSize: '11px', fontWeight: '600' }}>
                                       {qp && (fmtVal(qp.moisture) !== fallback || (qp as any).dryMoisture != null) ? (
                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                                          {fmtVal((qp as any).dryMoisture) !== fallback && <div style={{ fontSize: '10px', color: '#e67e22', fontWeight: '800' }}>{fmtVal((qp as any).dryMoisture, false, 3)}%</div>}
-                                          <div>{fmtVal(qp.moisture, false, 3)}%</div>
+                                          {fmtVal((qp as any).dryMoisture) !== fallback && <div style={{ fontSize: '10px', color: '#e67e22', fontWeight: '800' }}>{fmtVal((qp as any).dryMoisture, false, 2)}%</div>}
+                                          <div>{fmtVal(qp.moisture, false, 2)}%</div>
                                         </div>
                                       ) : fallback}
                                     </td>
@@ -677,12 +683,18 @@ const LotSelection: React.FC<LotSelectionProps> = ({ entryType, excludeEntryType
                     if (v == null || v === '') return null;
                     const n = Number(v);
                     if (isNaN(n) || n === 0) return null;
-                    if (forceDecimal) return n.toFixed(1);
-                    if (precision > 2) return String(parseFloat(n.toFixed(precision)));
-                    return n % 1 === 0 ? String(Math.round(n)) : String(parseFloat(n.toFixed(2)));
+                    if (forceDecimal) return n.toFixed(precision);
+                    if (entryType === 'RICE_SAMPLE') return n.toFixed(precision);
+                    return n % 1 === 0 ? String(Math.round(n)) : String(parseFloat(n.toFixed(precision)));
                   };
-                  const fmtB = (v: any, useBrackets = false) => {
-                    const formatted = fmt(v);
+                  const fmtWhole = (v: any) => {
+                    if (v == null || v === '') return null;
+                    const n = Number(v);
+                    if (isNaN(n) || n === 0) return null;
+                    return String(Math.round(n));
+                  };
+                  const fmtB = (v: any, useBrackets = false, isWhole = false) => {
+                    const formatted = isWhole ? fmtWhole(v) : fmt(v);
                     return formatted && useBrackets ? `(${formatted})` : formatted;
                   };
                   const QItem = ({ label, value }: { label: string; value: any }) => {
@@ -698,20 +710,20 @@ const LotSelection: React.FC<LotSelectionProps> = ({ entryType, excludeEntryType
                   // Row 1: Moisture (with dry moisture), Cutting, Bend, Grains Count
                   const row1: { label: string; value: any }[] = [];
                   if (fmt(qp.moisture)) {
-                    const dryVal = fmt((qp as any).dryMoisture, false, 3);
+                    const dryVal = fmt((qp as any).dryMoisture, false, 2);
                     row1.push({
                       label: 'Moisture',
                       value: dryVal ? (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
                           <span style={{ color: '#e67e22', fontWeight: '800', fontSize: '11px' }}>{dryVal}%</span>
-                          <span>{fmt(qp.moisture, false, 3)}%</span>
+                          <span>{fmt(qp.moisture, false, 2)}%</span>
                         </div>
-                      ) : `${fmt(qp.moisture, false, 3)}%`
+                      ) : `${fmt(qp.moisture, false, 2)}%`
                     });
                   }
                   if (qp.cutting1 && qp.cutting2 && (Number(qp.cutting1) !== 0 || Number(qp.cutting2) !== 0)) row1.push({ label: 'Cutting', value: `${fmt(qp.cutting1)}×${fmt(qp.cutting2)}` });
                   if (qp.bend1 && qp.bend2 && (Number(qp.bend1) !== 0 || Number(qp.bend2) !== 0)) row1.push({ label: 'Bend', value: `${fmt(qp.bend1)}×${fmt(qp.bend2)}` });
-                  if (fmtB(qp.grainsCount, true)) row1.push({ label: 'Grains Count', value: fmtB(qp.grainsCount, true)! });
+                  if (fmtB(qp.grainsCount, true, true)) row1.push({ label: 'Grains Count', value: fmtB(qp.grainsCount, true, true)! });
                   // Row 2: Mix, S Mix, L Mix
                   const row2: { label: string; value: string }[] = [];
                   if (fmt(qp.mix)) row2.push({ label: 'Mix', value: fmtB(qp.mix)! });

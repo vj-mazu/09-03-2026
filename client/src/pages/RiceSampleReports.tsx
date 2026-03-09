@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import LotSelection from './LotSelection';
 import CookingReport from './CookingReport';
-import FinalReport from './FinalReport';
+import FinalPassLots from './FinalPassLots';
 import LoadingLots from './LoadingLots';
 import CompletedLots from './CompletedLots';
 import RiceSampleBook from './RiceSampleBook';
@@ -109,7 +109,7 @@ const RiceSampleReports: React.FC = () => {
                 {activeTab === 'rice-samples' && <SampleEntryPage filterEntryType="RICE_SAMPLE" />}
                 {activeTab === 'pending-lots' && <LotSelection entryType="RICE_SAMPLE" />}
                 {activeTab === 'cooking-report' && <CookingReport entryType="RICE_SAMPLE" />}
-                {activeTab === 'lots-passed' && <FinalReport entryType="RICE_SAMPLE" />}
+                {activeTab === 'lots-passed' && <FinalPassLots entryType="RICE_SAMPLE" />}
                 {activeTab === 'loading-lots' && <LoadingLots entryType="RICE_SAMPLE" />}
                 {activeTab === 'completed-lots' && <CompletedLots entryType="RICE_SAMPLE" />}
                 {activeTab === 'sample-book-2' && <RiceSampleBook />}

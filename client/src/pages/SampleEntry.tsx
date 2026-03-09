@@ -28,6 +28,7 @@ const SampleEntryPage: React.FC<{
   const [entries, setEntries] = useState<SampleEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasExistingQualityData, setHasExistingQualityData] = useState(false);
+  const [qualityRecordExists, setQualityRecordExists] = useState(false);
   const [activeTab, setActiveTab] = useState<'MILL_SAMPLE' | 'LOCATION_SAMPLE' | 'SAMPLE_BOOK'>(defaultTab || 'MILL_SAMPLE');
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const [showQualitySaveConfirm, setShowQualitySaveConfirm] = useState(false);
@@ -48,10 +49,15 @@ const SampleEntryPage: React.FC<{
 
   // Sample Collected By — radio state
   const [sampleCollectType, setSampleCollectType] = useState<'broker' | 'supervisor'>('broker');
-  const [paddySupervisors, setPaddySupervisors] = useState<{ id: number; username: string }[]>([]);
+  const [paddySupervisors, setPaddySupervisors] = useState<{ id: number; username: string; staffType?: string | null }[]>([]);
 
   // Title Case helper: first letter capital, rest small
   const toTitleCase = (str: string) => str.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
+  const getTimeValue = (value?: string | null) => {
+    if (!value) return 0;
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) ? time : 0;
+  };
   const isRiceQualityEntry = filterEntryType === 'RICE_SAMPLE' || selectedEntry?.entryType === 'RICE_SAMPLE';
   const riceReportedByOptions = useMemo(() => {
     if (!isRiceQualityEntry) {
@@ -289,8 +295,9 @@ const SampleEntryPage: React.FC<{
         const usersResponse = await axios.get<{ success: boolean, users: Array<{ qualityName: string | null, role?: string, isActive?: boolean }> }>(`${API_URL}/admin/users`, { headers });
         if (usersResponse.data.success) {
           const qNames = usersResponse.data.users
-            .filter((u: any) => u.isActive !== false && u.role !== 'admin' && u.qualityName && u.qualityName.trim() !== '')
-            .map((u: any) => u.qualityName.trim());
+            .filter((u: any) => u.isActive !== false && u.qualityName && u.qualityName.trim() !== '')
+            .map((u: any) => u.qualityName.trim())
+            .sort((a: string, b: string) => a.localeCompare(b));
           setQualityUsers(Array.from(new Set(qNames)));
         }
       } catch (qErr) {
@@ -299,7 +306,7 @@ const SampleEntryPage: React.FC<{
 
       // Fetch paddy supervisors (mill staff) for Sample Collected By dropdown
       try {
-        const supervisorRes = await axios.get<{ success: boolean, users: Array<{ id: number, username: string }> }>(`${API_URL}/sample-entries/paddy-supervisors`, { headers });
+        const supervisorRes = await axios.get<{ success: boolean, users: Array<{ id: number, username: string, staffType?: string | null }> }>(`${API_URL}/sample-entries/paddy-supervisors`, { headers });
         if (supervisorRes.data.success) {
           setPaddySupervisors(supervisorRes.data.users);
         }
@@ -437,9 +444,46 @@ const SampleEntryPage: React.FC<{
     setFormData({ ...formData, [field]: toTitleCase(value) });
   };
 
+  const resetQualityForm = () => {
+    setQualityData({
+      moisture: '',
+      cutting: '',
+      cutting1: '',
+      cutting2: '',
+      bend: '',
+      bend1: '',
+      bend2: '',
+      mixS: '',
+      mixL: '',
+      mix: '',
+      kandu: '',
+      oil: '',
+      sk: '',
+      grainsCount: '',
+      wbR: '',
+      wbBk: '',
+      wbT: '',
+      paddyWb: '',
+      dryMoisture: '',
+      reportedBy: '',
+      gramsReport: '10gms',
+      uploadFile: null
+    });
+    setHasExistingQualityData(false);
+    setSmixEnabled(false);
+    setLmixEnabled(false);
+    setPaddyWbEnabled(false);
+    setWbEnabled(false);
+    setDryMoistureEnabled(false);
+  };
+
   const handleViewEntry = (entry: SampleEntry) => {
     setSelectedEntry(entry);
     setShowQualityModal(true);
+    const isPaddyResampleEntry =
+      entry.entryType !== 'RICE_SAMPLE'
+      && entry.workflowStatus === 'QUALITY_CHECK'
+      && entry.lotSelectionDecision === 'FAIL';
 
     // Fetch existing quality parameters if they exist
     const fetchQualityParameters = async () => {
@@ -453,6 +497,11 @@ const SampleEntryPage: React.FC<{
 
         // If quality parameters exist, populate the form with saved data
         if (response.data.qualityParameters) {
+          setQualityRecordExists(true);
+          if (isPaddyResampleEntry) {
+            resetQualityForm();
+            return;
+          }
           const qp = response.data.qualityParameters;
           // Helper: convert any zero variant to empty string so unfilled fields appear empty
           const zeroToEmpty = (v: any, forceDecimal = false) => {
@@ -499,72 +548,13 @@ const SampleEntryPage: React.FC<{
           if (qp.wbBk && parseFloat(qp.wbBk) > 0) setWbEnabled(true);
           if (qp.dryMoisture && parseFloat(qp.dryMoisture) > 0) setDryMoistureEnabled(true);
         } else {
-          // Reset quality data for new entry
-          setQualityData({
-            moisture: '',
-            cutting: '',
-            cutting1: '',
-            cutting2: '',
-            bend: '',
-            bend1: '',
-            bend2: '',
-            mixS: '',
-            mixL: '',
-            mix: '',
-            kandu: '',
-            oil: '',
-            sk: '',
-            grainsCount: '',
-            wbR: '',
-            wbBk: '',
-            wbT: '',
-            paddyWb: '',
-            dryMoisture: '',
-            reportedBy: '',
-            gramsReport: '10gms',
-            uploadFile: null
-          });
-          setHasExistingQualityData(false);
-          // Reset enabled flags for new entry
-          setSmixEnabled(false);
-          setLmixEnabled(false);
-          setPaddyWbEnabled(false);
-          setWbEnabled(false);
-          setDryMoistureEnabled(false);
+          setQualityRecordExists(false);
+          resetQualityForm();
         }
       } catch (error) {
         console.error('Error fetching quality parameters:', error);
-        // Reset on error
-        setQualityData({
-          moisture: '',
-          cutting: '',
-          cutting1: '',
-          cutting2: '',
-          bend: '',
-          bend1: '',
-          bend2: '',
-          mixS: '',
-          mixL: '',
-          mix: '',
-          kandu: '',
-          oil: '',
-          sk: '',
-          grainsCount: '',
-          wbR: '',
-          wbBk: '',
-          wbT: '',
-          paddyWb: '',
-          dryMoisture: '',
-          reportedBy: '',
-          gramsReport: '10gms',
-          uploadFile: null
-        });
-        setHasExistingQualityData(false);
-        setSmixEnabled(false);
-        setLmixEnabled(false);
-        setPaddyWbEnabled(false);
-        setWbEnabled(false);
-        setDryMoistureEnabled(false);
+        setQualityRecordExists(false);
+        resetQualityForm();
       }
     };
 
@@ -639,7 +629,12 @@ const SampleEntryPage: React.FC<{
       formDataToSend.append('wbT', qualityData.wbT || '0');
       formDataToSend.append('paddyWb', paddyWbEnabled ? qualityData.paddyWb || '0' : '0');
       formDataToSend.append('dryMoisture', dryMoistureEnabled ? qualityData.dryMoisture || '0' : '0');
-      formDataToSend.append('reportedBy', qualityData.reportedBy || user?.username || 'Unknown');
+      const reportedByValue = selectedEntry?.entryType === 'LOCATION_SAMPLE'
+        ? (user?.username || 'Unknown')
+        : isRiceQualityEntry
+          ? (qualityData.reportedBy || riceReportedByOptions[0] || '')
+          : (qualityData.reportedBy || qualityUsers[0] || '');
+      formDataToSend.append('reportedBy', reportedByValue || 'Unknown');
       if (is100GramsSave) {
         formDataToSend.append('is100Grams', 'true');
       }
@@ -648,7 +643,7 @@ const SampleEntryPage: React.FC<{
         formDataToSend.append('photo', qualityData.uploadFile);
       }
 
-      const method = hasExistingQualityData ? 'put' : 'post';
+      const method = qualityRecordExists ? 'put' : 'post';
       await axios[method](
         `${API_URL}/sample-entries/${selectedEntry.id}/quality-parameters`,
         formDataToSend,
@@ -673,6 +668,12 @@ const SampleEntryPage: React.FC<{
       releaseSubmissionLock(lockKey);
     }
   };
+
+  const isPaddyResampleModal = !!selectedEntry
+    && selectedEntry.entryType !== 'RICE_SAMPLE'
+    && selectedEntry.workflowStatus === 'QUALITY_CHECK'
+    && selectedEntry.lotSelectionDecision === 'FAIL';
+  const showQualityAsUpdate = hasExistingQualityData && !isPaddyResampleModal;
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#f5f5f5', minHeight: '100vh' }}>
@@ -1007,11 +1008,17 @@ const SampleEntryPage: React.FC<{
               }
 
               // Quality completed entries only show in Sample Book
-              if (entry.workflowStatus !== 'STAFF_ENTRY') return false;
+              const isPaddyResample = filterEntryType !== 'RICE_SAMPLE'
+                && entry.workflowStatus === 'QUALITY_CHECK'
+                && entry.lotSelectionDecision === 'FAIL';
+              if (entry.workflowStatus !== 'STAFF_ENTRY' && !isPaddyResample) return false;
             }
             if (activeTab === 'LOCATION_SAMPLE') {
               // Quality completed entries only show in Sample Book
-              if (entry.workflowStatus !== 'STAFF_ENTRY') return false;
+              const isPaddyResample = filterEntryType !== 'RICE_SAMPLE'
+                && entry.workflowStatus === 'QUALITY_CHECK'
+                && entry.lotSelectionDecision === 'FAIL';
+              if (entry.workflowStatus !== 'STAFF_ENTRY' && !isPaddyResample) return false;
             }
             if (activeTab === 'SAMPLE_BOOK') {
               if (filterEntryType === 'RICE_SAMPLE') {
@@ -1105,8 +1112,19 @@ const SampleEntryPage: React.FC<{
                           {[...brokerEntries].reverse().map((entry, index) => {
                             slNo++;
                             const qp = (entry as any).qualityParameters;
+                            const isPaddyResampleWorkflow =
+                              filterEntryType !== 'RICE_SAMPLE'
+                              && entry.workflowStatus === 'QUALITY_CHECK'
+                              && entry.lotSelectionDecision === 'FAIL';
+                            const resampleQualitySaved =
+                              isPaddyResampleWorkflow
+                              && qp
+                              && getTimeValue(qp.updatedAt || qp.createdAt) >= getTimeValue(entry.lotSelectionAt);
+                            const isPaddyResampleEntry = isPaddyResampleWorkflow && !resampleQualitySaved;
                             const hasQuality = qp && qp.moisture != null && ((qp.cutting1 && Number(qp.cutting1) !== 0) || (qp.bend1 && Number(qp.bend1) !== 0) || (qp.mix && Number(qp.mix) !== 0));
                             const has100Grams = entry.entryType !== 'RICE_SAMPLE' && qp && qp.moisture != null && !hasQuality;
+                            const showResampleQualityCompleted = isPaddyResampleWorkflow && resampleQualitySaved && hasQuality;
+                            const showResample100GramsCompleted = isPaddyResampleWorkflow && resampleQualitySaved && has100Grams;
 
                             // Location staff restriction: only the creator can enter/edit quality
                             const isLocationStaff = user?.role === 'staff' && (user as any)?.staffType === 'location';
@@ -1136,17 +1154,52 @@ const SampleEntryPage: React.FC<{
 
                                 <td style={{ padding: '1px 4px', textAlign: 'left', fontSize: '14px', lineHeight: '1.2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {toTitleCase(entry.variety)}
+                                  {isPaddyResampleEntry && <span style={{ marginLeft: '3px', color: '#f59e0b', fontSize: '11px' }} title='Re-sample pending'>&#8634;</span>}
                                   {hasQuality && <span style={{ marginLeft: '3px', color: '#27ae60', fontSize: '11px' }} title="Quality Completed">✅</span>}
                                   {has100Grams && <span style={{ marginLeft: '3px', color: '#e65100', fontSize: '11px' }} title="100g Completed">⚡</span>}
                                 </td>
                                 <td style={{ padding: '0px 2px', textAlign: 'left', lineHeight: '1.1' }}>
                                   <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-start', flexWrap: 'wrap', alignItems: 'center' }}>
 
-                                    {has100Grams ? (
+                                    {isPaddyResampleEntry && canEditQuality ? (
+                                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-start' }}>
+                                        <button
+                                          onClick={() => handleNextClick()}
+                                          style={{
+                                            fontSize: '10px',
+                                            padding: '3px 8px',
+                                            backgroundColor: '#f4c542',
+                                            color: '#4a3b00',
+                                            border: '1px solid #c89d0e',
+                                            borderRadius: '2px',
+                                            cursor: 'pointer',
+                                            fontWeight: '700'
+                                          }}
+                                        >
+                                          Next {'>'}
+                                        </button>
+                                        <button
+                                          onClick={() => handleEditEntry(entry)}
+                                          title="Edit Entry"
+                                          style={{
+                                            fontSize: '9px',
+                                            padding: '2px 5px',
+                                            backgroundColor: '#2980b9',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '2px',
+                                            cursor: 'pointer',
+                                            fontWeight: '600'
+                                          }}
+                                        >
+                                          Edit
+                                        </button>
+                                      </div>
+                                    ) : has100Grams ? (
                                       <>
                                         <span
                                           onClick={() => canEditQuality ? setExpandedEntryId(expandedEntryId === entry.id ? null : entry.id) : null}
-                                          style={{ fontSize: '11px', padding: '3px 8px', backgroundColor: '#ffeb3b', color: '#333', borderRadius: '3px', fontWeight: '700', border: '1.5px solid #f9a825', cursor: canEditQuality ? 'pointer' : 'default' }}
+                                          style={{ fontSize: '11px', padding: '3px 8px', backgroundColor: showResample100GramsCompleted ? '#fff3cd' : '#ffeb3b', color: showResample100GramsCompleted ? '#8a4b00' : '#333', borderRadius: '3px', fontWeight: '700', border: showResample100GramsCompleted ? '1.5px solid #f0ad4e' : '1.5px solid #f9a825', cursor: canEditQuality ? 'pointer' : 'default' }}
                                         >⚡ 100-Gms Completed</span>
                                         {canEditQuality && expandedEntryId === entry.id && (
                                           <div style={{ width: '100%', display: 'flex', gap: '4px', marginTop: '2px', justifyContent: 'flex-start' }}>
@@ -1162,11 +1215,11 @@ const SampleEntryPage: React.FC<{
                                           style={{
                                             fontSize: '11px',
                                             padding: '3px 8px',
-                                            backgroundColor: '#e8f5e9',
-                                            color: '#2e7d32',
+                                            backgroundColor: showResampleQualityCompleted ? '#ccfbf1' : '#e8f5e9',
+                                            color: showResampleQualityCompleted ? '#115e59' : '#2e7d32',
                                             borderRadius: '3px',
                                             fontWeight: '700',
-                                            border: '1.5px solid #66bb6a',
+                                            border: showResampleQualityCompleted ? '1.5px solid #14b8a6' : '1.5px solid #66bb6a',
                                             cursor: canEditQuality ? 'pointer' : 'default'
                                           }}
                                         >
@@ -1217,15 +1270,15 @@ const SampleEntryPage: React.FC<{
                                           style={{
                                             fontSize: '10px',
                                             padding: '3px 8px',
-                                            backgroundColor: '#e74c3c',
+                                            backgroundColor: '#c62828',
                                             color: 'white',
-                                            border: 'none',
+                                            border: '1px solid #8e0000',
                                             borderRadius: '2px',
                                             cursor: 'pointer',
                                             fontWeight: '700'
                                           }}
                                         >
-                                          Next →
+                                          Next {'>'}
                                         </button>
                                         <button
                                           onClick={() => handleEditEntry(entry)}
@@ -1555,7 +1608,7 @@ const SampleEntryPage: React.FC<{
                         style={{ accentColor: '#1565c0', marginTop: '4px' }}
                       />
                       <div style={{ flex: 1 }}>
-                        <label style={{ fontSize: '12px', fontWeight: '500', color: '#555', marginBottom: '4px', display: 'block' }}>Mill Gumasta Name</label>
+                        <label style={{ fontSize: '12px', fontWeight: '500', color: '#555', marginBottom: '4px', display: 'block' }}>Paddy Staff Name</label>
 
                         {/* Dropdown: Paddy Supervisor — hidden when manual text has been typed */}
                         {paddySupervisors.length > 0 && !(sampleCollectType === 'supervisor' && formData.sampleCollectedBy && !paddySupervisors.some(s => toTitleCase(s.username) === formData.sampleCollectedBy)) && (
@@ -1653,7 +1706,7 @@ const SampleEntryPage: React.FC<{
                         style={{ accentColor: '#1565c0', marginTop: '4px' }}
                       />
                       <div style={{ flex: 1 }}>
-                        <label style={{ fontSize: '12px', fontWeight: '500', color: '#555', marginBottom: '4px', display: 'block' }}>Mill Gumasta Name</label>
+                        <label style={{ fontSize: '12px', fontWeight: '500', color: '#555', marginBottom: '4px', display: 'block' }}>Paddy Staff Name</label>
 
                         {/* Dropdown: Paddy Supervisor */}
                         {paddySupervisors.length > 0 && !(sampleCollectType === 'supervisor' && formData.sampleCollectedBy && !paddySupervisors.some(s => toTitleCase(s.username) === formData.sampleCollectedBy)) && (
@@ -1837,7 +1890,9 @@ const SampleEntryPage: React.FC<{
                 gap: '8px',
                 boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
               }}>
-                {selectedEntry.entryType === 'RICE_SAMPLE' ? (hasExistingQualityData ? '✏️ Edit Rice Quality Parameters' : '📋 Rice Quality Parameters') : (hasExistingQualityData ? '✏️ Edit Quality Parameters' : '📋 Add Quality Parameters')}
+                {selectedEntry.entryType === 'RICE_SAMPLE'
+                  ? (showQualityAsUpdate ? 'Edit Rice Quality Parameters' : 'Rice Quality Parameters')
+                  : (isPaddyResampleModal ? 'Re-Sample Quality Parameters' : (showQualityAsUpdate ? 'Edit Quality Parameters' : 'Add Quality Parameters'))}
               </h3>
 
               {/* Entry Details */}
@@ -2148,11 +2203,10 @@ const SampleEntryPage: React.FC<{
                         style={{ width: '100%', padding: '6px', border: '1.5px solid #ccc', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', backgroundColor: '#f5f5f5', fontWeight: '600', cursor: 'not-allowed' }} />
                     ) : (
                       <select
-                        value={isRiceQualityEntry ? (qualityData.reportedBy || riceReportedByOptions[0] || '') : (qualityData.reportedBy || user?.username || '')}
+                        value={isRiceQualityEntry ? (qualityData.reportedBy || riceReportedByOptions[0] || '') : (qualityData.reportedBy || qualityUsers[0] || '')}
                         onChange={(e) => setQualityData({ ...qualityData, reportedBy: toTitleCase(e.target.value) })}
                         style={{ width: '100%', padding: '6px', border: '1.5px solid #bbb', borderRadius: '4px', fontSize: '12px', boxSizing: 'border-box', fontWeight: '600' }}
                       >
-                        {!isRiceQualityEntry && <option value={user?.username || ''}>{user?.username || 'Unknown'}</option>}
                         {(isRiceQualityEntry ? riceReportedByOptions : qualityUsers).map((qName, idx) => (
                           <option key={idx} value={qName}>{toTitleCase(qName)}</option>
                         ))}
@@ -2173,10 +2227,10 @@ const SampleEntryPage: React.FC<{
                       backgroundColor: (() => {
                         const isRice = selectedEntry?.entryType === 'RICE_SAMPLE';
                         if (isSubmitting) return '#95a5a6';
-                        if (isRice) return hasExistingQualityData ? '#1565c0' : '#2e7d32';
+                        if (isRice) return showQualityAsUpdate ? '#1565c0' : '#2e7d32';
                         const has100g = !!(qualityData.moisture && qualityData.grainsCount);
                         const allFilled = !!(has100g && qualityData.cutting1 && qualityData.cutting2 && qualityData.bend1 && qualityData.bend2 && qualityData.mix && qualityData.kandu && qualityData.oil && qualityData.sk);
-                        if (allFilled) return hasExistingQualityData ? '#1565c0' : '#2e7d32';
+                        if (allFilled) return showQualityAsUpdate ? '#1565c0' : '#2e7d32';
                         return '#e65100';
                       })(),
                       color: 'white', border: 'none', borderRadius: '4px', fontSize: '12px', fontWeight: '700'
@@ -2187,9 +2241,9 @@ const SampleEntryPage: React.FC<{
                       const isRice = selectedEntry?.entryType === 'RICE_SAMPLE';
                       const has100g = !!(qualityData.moisture && qualityData.grainsCount);
                       const allFilled = !!(has100g && qualityData.cutting1 && qualityData.cutting2 && qualityData.bend1 && qualityData.bend2 && qualityData.mix && qualityData.kandu && qualityData.oil && qualityData.sk);
-                      if (allFilled || isRice) return hasExistingQualityData ? 'Update Quality' : 'Submit Quality';
-                      if (has100g) return hasExistingQualityData ? 'Update 100g' : 'Save 100g';
-                      return hasExistingQualityData ? 'Update' : 'Save';
+                      if (allFilled || isRice) return showQualityAsUpdate ? 'Update Quality' : 'Submit Quality';
+                      if (has100g) return showQualityAsUpdate ? 'Update 100g' : 'Save 100g';
+                      return showQualityAsUpdate ? 'Update' : 'Save';
                     })()}
                   </button>
                 </div>
@@ -2375,7 +2429,7 @@ const SampleEntryPage: React.FC<{
                       style={{ accentColor: '#1565c0', marginTop: '4px' }}
                     />
                     <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: '12px', fontWeight: '500', color: '#555', marginBottom: '4px', display: 'block' }}>Mill Gumasta Name</label>
+                      <label style={{ fontSize: '12px', fontWeight: '500', color: '#555', marginBottom: '4px', display: 'block' }}>Paddy Staff Name</label>
                       {paddySupervisors.length > 0 && !(sampleCollectType === 'supervisor' && formData.sampleCollectedBy && !paddySupervisors.some(s => toTitleCase(s.username) === formData.sampleCollectedBy)) && (
                         <select
                           value={sampleCollectType === 'supervisor' && paddySupervisors.some(s => toTitleCase(s.username) === formData.sampleCollectedBy) ? formData.sampleCollectedBy : ''}
@@ -2465,3 +2519,5 @@ const SampleEntryPage: React.FC<{
 };
 
 export default SampleEntryPage;
+
+

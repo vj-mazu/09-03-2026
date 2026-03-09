@@ -513,12 +513,17 @@ const RiceSampleBook: React.FC = () => {
                                         if (v == null || v === '') return null;
                                         const n = Number(v);
                                         if (isNaN(n) || n === 0) return null;
-                                        if (forceDecimal) return n.toFixed(1);
-                                        if (precision > 2) return String(parseFloat(n.toFixed(precision)));
-                                        return n % 1 === 0 ? String(Math.round(n)) : String(parseFloat(n.toFixed(2)));
+                                        if (forceDecimal) return n.toFixed(precision);
+                                        return n.toFixed(precision);
                                     };
-                                    const fmtB = (v: any, useBrackets = false) => {
-                                        const f = fmt(v);
+                                    const fmtWhole = (v: any) => {
+                                        if (v == null || v === '') return null;
+                                        const n = Number(v);
+                                        if (isNaN(n) || n === 0) return null;
+                                        return String(Math.round(n));
+                                    };
+                                    const fmtB = (v: any, useBrackets = false, isWhole = false) => {
+                                        const f = isWhole ? fmtWhole(v) : fmt(v);
                                         return f && useBrackets ? `(${f})` : f;
                                     };
                                     const QItem = ({ label, value }: { label: string; value: React.ReactNode }) => {
@@ -534,20 +539,20 @@ const RiceSampleBook: React.FC = () => {
                                     // Row 1: Moisture, Cutting, Bend, Grains Count
                                     const row1: { label: string; value: React.ReactNode }[] = [];
                                     if (fmt(qp.moisture)) {
-                                        const dryVal = fmt((qp as any).dryMoisture, false, 3);
+                                        const dryVal = fmt((qp as any).dryMoisture, false, 2);
                                         row1.push({
                                             label: 'Moisture',
                                             value: dryVal ? (
                                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1px' }}>
                                                     <span style={{ color: '#e67e22', fontWeight: '800', fontSize: '11px' }}>{dryVal}%</span>
-                                                    <span>{fmt(qp.moisture, false, 3)}%</span>
+                                                    <span>{fmt(qp.moisture, false, 2)}%</span>
                                                 </div>
-                                            ) : `${fmt(qp.moisture, false, 3)}%`
+                                            ) : `${fmt(qp.moisture, false, 2)}%`
                                         });
                                     }
-                                    if (qp.cutting1 && qp.cutting2 && (Number(qp.cutting1) !== 0 || Number(qp.cutting2) !== 0)) row1.push({ label: 'Cutting', value: `${fmt(qp.cutting1) || '0'}×${fmt(qp.cutting2) || '0'}` });
-                                    if (qp.bend1 && qp.bend2 && (Number(qp.bend1) !== 0 || Number(qp.bend2) !== 0)) row1.push({ label: 'Bend', value: `${fmt(qp.bend1) || '0'}×${fmt(qp.bend2) || '0'}` });
-                                    if (fmtB(qp.grainsCount, true)) row1.push({ label: 'Grains Count', value: fmtB(qp.grainsCount, true)! });
+                                    if (qp.cutting1 && qp.cutting2 && (Number(qp.cutting1) !== 0 || Number(qp.cutting2) !== 0)) row1.push({ label: 'Cutting', value: `${fmt(qp.cutting1) || '0.00'}×${fmt(qp.cutting2) || '0.00'}` });
+                                    if (qp.bend1 && qp.bend2 && (Number(qp.bend1) !== 0 || Number(qp.bend2) !== 0)) row1.push({ label: 'Bend', value: `${fmt(qp.bend1) || '0.00'}×${fmt(qp.bend2) || '0.00'}` });
+                                    if (fmtB(qp.grainsCount, true, true)) row1.push({ label: 'Grains Count', value: fmtB(qp.grainsCount, true, true)! });
                                     const row2: { label: string; value: React.ReactNode }[] = [];
                                     if (fmt(qp.mix)) row2.push({ label: 'Mix', value: fmtB(qp.mix)! });
                                     if (fmt(qp.mixS)) row2.push({ label: 'S Mix', value: fmtB(qp.mixS)! });

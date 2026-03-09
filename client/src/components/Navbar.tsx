@@ -387,7 +387,6 @@ const Navbar: React.FC = () => {
           )}
           {user && user.role === 'manager' && (
             <>
-              <NavLink to="/rice-sample-entries" $active={isActive('/rice-sample-entries')}>Rice Sample Entry</NavLink>
               <NavLink to="/manager-sample-reports" $active={isActive('/manager-sample-reports')}>Paddy Sample Reports</NavLink>
               <NavLink to="/rice-sample-reports" $active={isActive('/rice-sample-reports')}>Rice Sample Reports</NavLink>
               <NavLink to="/sample-entry-ledger" $active={isActive('/sample-entry-ledger')}>Paddy Sample Book</NavLink>
@@ -395,7 +394,6 @@ const Navbar: React.FC = () => {
           )}
           {user && user.role === 'admin' && (
             <>
-              <NavLink to="/rice-sample-entries" $active={isActive('/rice-sample-entries')}>Rice Sample Entry</NavLink>
               <NavLink to="/paddy-sample-reports" $active={isActive('/paddy-sample-reports') || isActive('/owner-sample-reports')}>Paddy Sample Reports</NavLink>
               <NavLink to="/rice-sample-reports" $active={isActive('/rice-sample-reports')}>Rice Sample Reports</NavLink>
               <NavLink to="/arrivals" $active={isActive('/arrivals')}>Arrivals</NavLink>
@@ -455,9 +453,6 @@ const Navbar: React.FC = () => {
               {workflowDropdownOpen && (
                 <DropdownMenu>
                   <DropdownLink to="/sample-entry" $active={isActive('/sample-entry')}>New Paddy Sample</DropdownLink>
-                  {(user.role === 'manager' || user.role === 'admin') && (
-                    <DropdownLink to="/rice-sample-entries" $active={isActive('/rice-sample-entries')}>Rice Sample Entry</DropdownLink>
-                  )}
                   {(user.role === 'manager' || user.role === 'admin') && (
                     <>
                       <DropdownLink to="/sample-workflow" $active={isActive('/sample-workflow')}>Workflow Board</DropdownLink>

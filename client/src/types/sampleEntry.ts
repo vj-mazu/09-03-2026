@@ -74,8 +74,11 @@ export interface QualityParameters {
   wbT?: number;
   paddyWb?: number;
   phoo?: number;
+  reportedBy?: string;
+  remarks?: string;
   reportedByUserId: number;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface CookingReport {
@@ -87,6 +90,8 @@ export interface CookingReport {
   cookingApprovedBy?: string;
   reportedByUserId: number;
   createdAt: string;
+  updatedAt?: string;
+  history?: any[];
 }
 
 export interface LotAllotment {

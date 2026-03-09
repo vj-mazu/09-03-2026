@@ -68,7 +68,7 @@ class CookingReportService {
       }
 
       // Transition workflow based on status
-      const currentStatus = reportData.status || (existing && existing.status);
+      const currentStatus = reportData.status || null;
       if (currentStatus) {
         let nextStatus;
         if (currentStatus === 'PASS' || currentStatus === 'MEDIUM') {

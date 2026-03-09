@@ -191,6 +191,65 @@ const SampleEntryOffering = sequelize.define('SampleEntryOffering', {
         allowNull: true,
         field: 'custom_divisor'
     },
+    offerVersions: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        defaultValue: [],
+        field: 'offer_versions'
+    },
+    activeOfferKey: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        field: 'active_offer_key'
+    },
+    cdEnabled: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: false,
+        field: 'cd_enabled'
+    },
+    cdValue: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: 0,
+        field: 'cd_value'
+    },
+    cdUnit: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        defaultValue: 'lumps',
+        field: 'cd_unit'
+    },
+    bankLoanEnabled: {
+        type: DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: false,
+        field: 'bank_loan_enabled'
+    },
+    bankLoanValue: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: 0,
+        field: 'bank_loan_value'
+    },
+    bankLoanUnit: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        defaultValue: 'lumps',
+        field: 'bank_loan_unit'
+    },
+    paymentConditionValue: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+        defaultValue: 15,
+        field: 'payment_condition_value'
+    },
+    paymentConditionUnit: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        defaultValue: 'days',
+        field: 'payment_condition_unit'
+    },
     // === FINAL PRICE FIELDS ===
     finalBaseRate: {
         type: DataTypes.DECIMAL(10, 2),
@@ -211,6 +270,11 @@ const SampleEntryOffering = sequelize.define('SampleEntryOffering', {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,
         field: 'final_price'
+    },
+    finalRemarks: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'final_remarks'
     },
     isFinalized: {
         type: DataTypes.BOOLEAN,

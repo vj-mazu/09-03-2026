@@ -14,9 +14,18 @@ const SampleEntry = require('../models/SampleEntry');
 const QualityParameters = require('../models/QualityParameters');
 const SampleEntryOffering = require('../models/SampleEntryOffering');
 const CookingReport = require('../models/CookingReport');
+const SampleEntryAuditLog = require('../models/SampleEntryAuditLog');
 const User = require('../models/User');
 const { Op, col, where: sqlWhere } = require('sequelize');
 const getWorkflowRole = (user) => user?.effectiveRole || user?.role;
+const invalidateSampleEntryTabCaches = () => {
+  [
+    'sample-entries/tabs/final-pass-lots',
+    'sample-entries/tabs/loading-lots',
+    'sample-entries/tabs/completed-lots',
+    'sample-entries/by-role'
+  ].forEach(invalidateCache);
+};
 
 // ─── Paddy Supervisors list (for Sample Collected By dropdown) ───
 router.get('/paddy-supervisors', authenticateToken, async (req, res) => {
@@ -24,16 +33,15 @@ router.get('/paddy-supervisors', authenticateToken, async (req, res) => {
     const supervisors = await User.findAll({
       where: {
         role: 'staff',
-        staffType: 'mill',
         isActive: true
       },
-      attributes: ['id', 'username'],
+      attributes: ['id', 'username', 'staffType'],
       order: [['username', 'ASC']]
     });
 
     res.json({
       success: true,
-      users: supervisors.map(u => ({ id: u.id, username: u.username }))
+      users: supervisors.map(u => ({ id: u.id, username: u.username, staffType: u.staffType || null }))
     });
   } catch (error) {
     console.error('Get paddy supervisors error:', error);
@@ -132,6 +140,168 @@ const { cacheMiddleware, invalidateCache } = require('../middleware/cache');
 
 // ─── TAB ROUTES (MUST be before /:id to avoid route shadowing) ───
 
+const attachLoadingLotsHistories = async (rows) => {
+  if (!Array.isArray(rows) || rows.length === 0) return rows;
+
+  const pushHistoryValue = (list, value) => {
+    const normalized = typeof value === 'string' ? value.trim() : '';
+    if (!normalized) return;
+    list.push(normalized);
+  };
+  const buildQualityAttemptDetail = (source, fallbackCreatedAt) => {
+    if (!source) return null;
+
+    const reportedBy = typeof source.reportedBy === 'string' ? source.reportedBy.trim() : '';
+    const detail = {
+      reportedBy,
+      createdAt: source.updatedAt || source.createdAt || fallbackCreatedAt || null,
+      moisture: source.moisture ?? null,
+      dryMoisture: source.dryMoisture ?? null,
+      cutting1: source.cutting1 ?? null,
+      cutting2: source.cutting2 ?? null,
+      bend1: source.bend1 ?? null,
+      bend2: source.bend2 ?? null,
+      mix: source.mix ?? null,
+      kandu: source.kandu ?? null,
+      oil: source.oil ?? null,
+      sk: source.sk ?? null,
+      grainsCount: source.grainsCount ?? null,
+      wbR: source.wbR ?? null,
+      wbBk: source.wbBk ?? null,
+      wbT: source.wbT ?? null,
+      paddyWb: source.paddyWb ?? null,
+      gramsReport: source.gramsReport ?? null
+    };
+
+    const hasData = Object.values(detail).some((value) => value !== null && value !== '' && value !== undefined);
+    return hasData ? detail : null;
+  };
+
+  const sampleEntryIds = rows
+    .map((row) => row?.id)
+    .filter(Boolean);
+
+  const qualityIds = rows
+    .map((row) => row?.qualityParameters?.id)
+    .filter(Boolean);
+
+  if (sampleEntryIds.length === 0 && qualityIds.length === 0) return rows;
+
+  const [sampleEntryLogs, qualityLogs] = await Promise.all([
+    sampleEntryIds.length > 0
+      ? SampleEntryAuditLog.findAll({
+        where: {
+          tableName: 'sample_entries',
+          actionType: { [Op.in]: ['CREATE', 'UPDATE'] },
+          recordId: { [Op.in]: sampleEntryIds }
+        },
+        attributes: ['recordId', 'newValues', 'createdAt'],
+        order: [['createdAt', 'ASC']]
+      })
+      : [],
+    qualityIds.length > 0
+      ? SampleEntryAuditLog.findAll({
+        where: {
+          tableName: 'quality_parameters',
+          actionType: { [Op.in]: ['CREATE', 'UPDATE'] },
+          recordId: { [Op.in]: qualityIds }
+        },
+        attributes: ['recordId', 'newValues', 'createdAt'],
+        order: [['createdAt', 'ASC']]
+      })
+      : []
+  ]);
+
+  const sampleCollectedHistoryByEntryId = new Map();
+  sampleEntryLogs.forEach((log) => {
+    const key = String(log.recordId);
+    if (!sampleCollectedHistoryByEntryId.has(key)) sampleCollectedHistoryByEntryId.set(key, []);
+    sampleCollectedHistoryByEntryId.get(key).push(log);
+  });
+
+  const qualityHistoryByQualityId = new Map();
+  qualityLogs.forEach((log) => {
+    const key = String(log.recordId);
+    if (!qualityHistoryByQualityId.has(key)) qualityHistoryByQualityId.set(key, []);
+    qualityHistoryByQualityId.get(key).push(log);
+  });
+
+  rows.forEach((row) => {
+    const sampleCollectedHistory = [];
+    const sampleEntryAuditLogs = sampleCollectedHistoryByEntryId.get(String(row?.id)) || [];
+
+    sampleEntryAuditLogs.forEach((log) => {
+      const sampleCollectedBy = typeof log.newValues?.sampleCollectedBy === 'string'
+        ? log.newValues.sampleCollectedBy.trim()
+        : '';
+
+      pushHistoryValue(sampleCollectedHistory, sampleCollectedBy);
+    });
+
+    const currentSampleCollectedBy = typeof row?.sampleCollectedBy === 'string'
+      ? row.sampleCollectedBy.trim()
+      : '';
+
+    if (currentSampleCollectedBy && sampleCollectedHistory.length === 0) {
+      sampleCollectedHistory.push(currentSampleCollectedBy);
+    }
+
+    row.dataValues.sampleCollectedHistory = sampleCollectedHistory;
+
+    const qualityId = row?.qualityParameters?.id;
+    if (!qualityId) {
+      row.dataValues.qualityReportHistory = [];
+      row.dataValues.qualityReportAttempts = 0;
+      row.dataValues.qualityAttemptDetails = [];
+      return;
+    }
+
+    const history = [];
+    const qualityAttemptDetails = [];
+    const auditLogs = qualityHistoryByQualityId.get(String(qualityId)) || [];
+
+    auditLogs.forEach((log) => {
+      const reportedBy = typeof log.newValues?.reportedBy === 'string'
+        ? log.newValues.reportedBy.trim()
+        : '';
+
+      pushHistoryValue(history, reportedBy);
+
+      const detail = buildQualityAttemptDetail(log.newValues, log.createdAt);
+      if (detail) {
+        qualityAttemptDetails.push(detail);
+      }
+    });
+
+    const currentReportedBy = typeof row.qualityParameters?.reportedBy === 'string'
+      ? row.qualityParameters.reportedBy.trim()
+      : '';
+
+    if (currentReportedBy && history.length === 0) {
+      history.push(currentReportedBy);
+    }
+
+    if (qualityAttemptDetails.length === 0) {
+      const fallbackDetail = buildQualityAttemptDetail(row.qualityParameters, row.createdAt);
+      if (fallbackDetail) {
+        qualityAttemptDetails.push(fallbackDetail);
+      }
+    }
+
+    row.dataValues.qualityReportHistory = history;
+    row.dataValues.qualityReportAttempts = Math.max(
+      1,
+      auditLogs.length > 0 ? auditLogs.length : history.length
+    );
+    row.dataValues.qualityAttemptDetails = qualityAttemptDetails.map((detail, index) => ({
+      attemptNo: index + 1,
+      ...detail
+    }));
+  });
+
+  return rows;
+};
+
 // ─── Loading Lots (passed lots in processing) ───
 router.get('/tabs/loading-lots', authenticateToken, cacheMiddleware(30), async (req, res) => {
   try {
@@ -155,8 +325,24 @@ router.get('/tabs/loading-lots', authenticateToken, cacheMiddleware(30), async (
     if (paginationQuery.isCursor) {
       const rows = await SampleEntry.findAll({
         where: mergedWhere,
-        attributes: ['id', 'entryDate', 'brokerName', 'variety', 'partyName', 'location', 'bags', 'packaging', 'workflowStatus', 'createdAt'],
+        attributes: ['id', 'entryDate', 'brokerName', 'variety', 'partyName', 'location', 'bags', 'packaging', 'workflowStatus', 'createdAt', 'sampleCollectedBy', 'entryType', 'lorryNumber', 'lotSelectionDecision'],
         include: [
+          {
+            model: QualityParameters,
+            as: 'qualityParameters',
+            attributes: [
+              'id', 'reportedBy', 'moisture', 'dryMoisture', 'cutting1', 'cutting2',
+              'bend1', 'bend2', 'mix', 'kandu', 'oil', 'sk', 'grainsCount',
+              'wbR', 'wbBk', 'wbT', 'paddyWb', 'gramsReport', 'createdAt', 'updatedAt'
+            ],
+            required: false
+          },
+          {
+            model: CookingReport,
+            as: 'cookingReport',
+            attributes: ['id', 'status', 'remarks'],
+            required: false
+          },
           { model: SampleEntryOffering, as: 'offering' },
           { model: User, as: 'creator', attributes: ['id', 'username'] }
         ],
@@ -164,13 +350,30 @@ router.get('/tabs/loading-lots', authenticateToken, cacheMiddleware(30), async (
         limit: paginationQuery.limit,
         subQuery: false
       });
+      await attachLoadingLotsHistories(rows);
       const response = formatCursorResponse(rows, paginationQuery.limit);
       res.json({ entries: response.data, pagination: response.pagination });
     } else {
       const { count, rows } = await SampleEntry.findAndCountAll({
         where: mergedWhere,
-        attributes: ['id', 'entryDate', 'brokerName', 'variety', 'partyName', 'location', 'bags', 'packaging', 'workflowStatus', 'createdAt'],
+        attributes: ['id', 'entryDate', 'brokerName', 'variety', 'partyName', 'location', 'bags', 'packaging', 'workflowStatus', 'createdAt', 'sampleCollectedBy', 'entryType', 'lorryNumber', 'lotSelectionDecision'],
         include: [
+          {
+            model: QualityParameters,
+            as: 'qualityParameters',
+            attributes: [
+              'id', 'reportedBy', 'moisture', 'dryMoisture', 'cutting1', 'cutting2',
+              'bend1', 'bend2', 'mix', 'kandu', 'oil', 'sk', 'grainsCount',
+              'wbR', 'wbBk', 'wbT', 'paddyWb', 'gramsReport', 'createdAt', 'updatedAt'
+            ],
+            required: false
+          },
+          {
+            model: CookingReport,
+            as: 'cookingReport',
+            attributes: ['id', 'status', 'remarks'],
+            required: false
+          },
           { model: SampleEntryOffering, as: 'offering' },
           { model: User, as: 'creator', attributes: ['id', 'username'] }
         ],
@@ -179,6 +382,7 @@ router.get('/tabs/loading-lots', authenticateToken, cacheMiddleware(30), async (
         offset: paginationQuery.offset,
         subQuery: false
       });
+      await attachLoadingLotsHistories(rows);
       res.json({ entries: rows, total: count, page: parseInt(page), pageSize: parseInt(pageSize) });
     }
   } catch (error) {
@@ -266,6 +470,9 @@ router.get('/tabs/final-pass-lots', authenticateToken, cacheMiddleware(15), asyn
           'offerBaseRateValue', 'hamaliEnabled', 'hamaliPerKg', 'hamaliPerQuintal',
           'hamaliUnit', 'moistureValue', 'brokerage', 'brokerageEnabled', 'brokerageUnit',
           'lf', 'lfEnabled', 'lfUnit', 'egbType', 'egbValue', 'customDivisor',
+          'offerVersions', 'activeOfferKey', 'cdEnabled', 'cdValue', 'cdUnit',
+          'bankLoanEnabled', 'bankLoanValue', 'bankLoanUnit',
+          'paymentConditionValue', 'paymentConditionUnit',
           'finalBaseRate', 'finalSute', 'finalSuteUnit', 'finalPrice', 'isFinalized'
         ],
         required: false
@@ -645,7 +852,9 @@ router.put('/:id/quality-parameters', authenticateToken, async (req, res) => {
           wbBk: parseFloatSafe(req.body.wbBk, existing.wbBk),
           wbT: parseFloatSafe(req.body.wbT, existing.wbT),
           paddyWb: parseFloatSafe(req.body.paddyWb, existing.paddyWb),
-          gramsReport: normalizeGramsReport(req.body.gramsReport, existing.gramsReport)
+          gramsReport: normalizeGramsReport(req.body.gramsReport, existing.gramsReport),
+          reportedBy: req.body.reportedBy || existing.reportedBy,
+          reportedByUserId: req.user.userId
         };
 
         // Handle photo upload if present
@@ -707,13 +916,22 @@ router.put('/:id/physical-inspection/:inspectionId', authenticateToken, async (r
 router.post('/:id/lot-selection', authenticateToken, async (req, res) => {
   try {
     const { decision } = req.body; // 'PASS_WITHOUT_COOKING', 'PASS_WITH_COOKING', 'FAIL'
+    const entry = await SampleEntry.findByPk(req.params.id, {
+      attributes: ['id', 'entryType', 'workflowStatus']
+    });
+
+    if (!entry) {
+      return res.status(404).json({ error: 'Sample entry not found' });
+    }
 
     let nextStatus;
     if (decision === 'PASS_WITHOUT_COOKING') {
       nextStatus = 'FINAL_REPORT';
     } else if (decision === 'PASS_WITH_COOKING') {
       nextStatus = 'COOKING_REPORT';
-    } else if (decision === 'FAIL' || decision === 'SOLDOUT') {
+    } else if (decision === 'FAIL') {
+      nextStatus = entry.entryType === 'RICE_SAMPLE' ? 'FAILED' : 'QUALITY_CHECK';
+    } else if (decision === 'SOLDOUT') {
       nextStatus = 'FAILED';
     } else {
       return res.status(400).json({ error: 'Invalid decision' });
@@ -738,6 +956,7 @@ router.post('/:id/lot-selection', authenticateToken, async (req, res) => {
       req.user.userId
     );
 
+    invalidateSampleEntryTabCaches();
     res.json({ message: 'Workflow transitioned successfully', nextStatus });
   } catch (error) {
     console.error('Error transitioning workflow:', error);
@@ -769,10 +988,15 @@ router.post('/:id/cooking-report', authenticateToken, async (req, res) => {
 // Update offering price (Owner/Admin)
 router.post('/:id/offering-price', authenticateToken, async (req, res) => {
   try {
+    if (!['admin', 'owner'].includes(getWorkflowRole(req.user))) {
+      return res.status(403).json({ error: 'Only admin or owner can update offering price' });
+    }
+
     const entry = await SampleEntryService.updateOfferingPrice(
       req.params.id, // Keep as UUID string
       req.body,
-      req.user.userId // Use userId from JWT token
+      req.user.userId, // Use userId from JWT token
+      getWorkflowRole(req.user)
     );
 
     res.json(entry);
@@ -806,7 +1030,7 @@ router.post('/:id/final-price', authenticateToken, async (req, res) => {
         const entry = await SampleEntryService.getSampleEntryById(req.params.id);
         console.log(`[FINAL-PRICE] Entry found: ${!!entry}, workflowStatus: ${entry ? entry.workflowStatus : 'N/A'}`);
 
-        if (entry && entry.workflowStatus === 'FINAL_REPORT') {
+        if (entry && ['FINAL_REPORT', 'LOT_SELECTION'].includes(entry.workflowStatus)) {
           console.log(`[FINAL-PRICE] Transitioning ${req.params.id} to LOT_ALLOTMENT (Loading Lots) (Triggered by ${getWorkflowRole(req.user)})`);
           await WorkflowEngine.transitionTo(
             req.params.id,
@@ -826,6 +1050,7 @@ router.post('/:id/final-price', authenticateToken, async (req, res) => {
       console.log(`[FINAL-PRICE] ⚠️ isFinalized is false/undefined - no transition attempted`);
     }
 
+    invalidateSampleEntryTabCaches();
     console.log(`[FINAL-PRICE] ===== END =====`);
     res.json(result);
   } catch (error) {
@@ -851,6 +1076,7 @@ router.post('/:id/transition', authenticateToken, async (req, res) => {
       {}
     );
 
+    invalidateSampleEntryTabCaches();
     res.json({ success: true, message: `Transitioned to ${toStatus}`, result });
   } catch (error) {
     console.error('[TRANSITION] Error:', error.message);
@@ -1307,7 +1533,7 @@ router.post('/:id/complete', authenticateToken, async (req, res) => {
 // Get sample entry ledger
 router.get('/ledger/all', authenticateToken, async (req, res) => {
   try {
-    const { startDate, endDate, broker, variety, party, location, status, limit, page, pageSize, excludeEntryType } = req.query;
+    const { startDate, endDate, broker, variety, party, location, status, limit, page, pageSize, entryType, excludeEntryType } = req.query;
 
     const filters = {
       startDate: startDate ? new Date(startDate) : undefined,
@@ -1320,10 +1546,18 @@ router.get('/ledger/all', authenticateToken, async (req, res) => {
       limit: limit ? parseInt(limit) : undefined,
       page: page ? parseInt(page) : 1,
       pageSize: pageSize ? parseInt(pageSize) : 100,
+      entryType,
       excludeEntryType
     };
 
     const ledger = await SampleEntryService.getSampleEntryLedger(filters);
+
+    if (Array.isArray(ledger?.entries)) {
+      ledger.entries = await attachLoadingLotsHistories(ledger.entries);
+    } else if (Array.isArray(ledger)) {
+      await attachLoadingLotsHistories(ledger);
+    }
+
     res.json(ledger);
   } catch (error) {
     console.error('Error getting sample entry ledger:', error);

@@ -22,6 +22,33 @@ const toTitleCase = (str: string) => {
     if (!str) return '';
     return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
 };
+const toNumberText = (value: any, digits = 2) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num.toFixed(digits).replace(/\.00$/, '') : '-';
+};
+const formatIndianNumber = (value: any, digits = 2) => {
+    const num = Number(value);
+    return Number.isFinite(num)
+        ? num.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: digits })
+        : '-';
+};
+const formatIndianCurrency = (value: any) => {
+    const num = Number(value);
+    return Number.isFinite(num)
+        ? num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '-';
+};
+const formatPaddyFinalSummary = (offering?: any) => {
+    if (!offering) return '';
+    const parts: string[] = [];
+    if (offering.cdEnabled) parts.push(`CD ${offering.cdUnit === 'percentage' ? `${toNumberText(offering.cdValue)}%` : toNumberText(offering.cdValue)}`);
+    if (String(offering.baseRateType || '').toUpperCase().includes('LOOSE')) {
+        parts.push(`EGB ${offering.egbType === 'mill' ? 'Mill' : toNumberText(offering.egbValue)}`);
+    }
+    if (offering.bankLoanEnabled) parts.push(`BL ${offering.bankLoanUnit === 'per_bag' ? `Rs ${formatIndianCurrency(offering.bankLoanValue)}/Bag` : `Rs ${formatIndianCurrency(offering.bankLoanValue)}`}`);
+    if (offering.paymentConditionValue) parts.push(`Pay ${offering.paymentConditionValue} ${offering.paymentConditionUnit === 'month' ? 'Month' : 'Days'}`);
+    return parts.join(' | ');
+};
 
 interface CompletedLotsProps {
     entryType?: string;
@@ -123,7 +150,14 @@ const CompletedLots: React.FC<CompletedLotsProps> = ({ entryType, excludeEntryTy
                                     </span>
                                 </td>
                                 <td style={{ padding: '8px' }}>{e.offering?.offerRate || '-'}</td>
-                                <td style={{ padding: '8px', fontWeight: '600', color: '#27ae60' }}>{e.offering?.finalPrice || '-'}</td>
+                                <td style={{ padding: '8px', fontWeight: '600', color: '#27ae60' }}>
+                                    <div>{e.offering?.finalPrice || '-'}</div>
+                                    {entryType !== 'RICE_SAMPLE' && formatPaddyFinalSummary(e.offering) && (
+                                        <div style={{ marginTop: '3px', fontSize: '10px', fontWeight: '600', color: '#6b7280', lineHeight: '1.35' }}>
+                                            {formatPaddyFinalSummary(e.offering)}
+                                        </div>
+                                    )}
+                                </td>
                             </tr>
                         ))}
                     </tbody>

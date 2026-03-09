@@ -24,6 +24,7 @@ interface SampleEntry {
     sampleCollectedBy?: string;
     workflowStatus: string;
     lotSelectionDecision?: string;
+    qualityReportAttempts?: number;
     qualityParameters?: {
         moisture: number;
         cutting1: number;
@@ -60,11 +61,65 @@ interface SampleEntry {
             remarks?: string | null;
         }>;
     };
-    offering?: { finalPrice?: number; offeringPrice?: number; offerBaseRateValue?: number; baseRateType?: string };
+    offering?: {
+        finalPrice?: number;
+        offeringPrice?: number;
+        offerBaseRateValue?: number;
+        baseRateType?: string;
+        baseRateUnit?: string;
+        finalBaseRate?: number;
+        finalSute?: number;
+        finalSuteUnit?: string;
+        sute?: number;
+        suteUnit?: string;
+        moistureValue?: number;
+        hamali?: number;
+        hamaliUnit?: string;
+        brokerage?: number;
+        brokerageUnit?: string;
+        lf?: number;
+        lfUnit?: string;
+        egbType?: string;
+        egbValue?: number;
+        cdEnabled?: boolean;
+        cdValue?: number;
+        cdUnit?: string;
+        bankLoanEnabled?: boolean;
+        bankLoanValue?: number;
+        bankLoanUnit?: string;
+        paymentConditionValue?: number;
+        paymentConditionUnit?: string;
+    };
     creator?: { username: string };
 }
 
 const toTitleCase = (str: string) => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : '';
+const toNumberText = (value: any, digits = 2) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num.toFixed(digits).replace(/\.00$/, '') : '-';
+};
+const formatIndianCurrency = (value: any) => {
+    const num = Number(value);
+    return Number.isFinite(num)
+        ? num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '-';
+};
+const formatRateUnitLabel = (value?: string) => value === 'per_quintal'
+    ? 'Per Qtl'
+    : value === 'per_ton'
+        ? 'Per Ton'
+        : value === 'per_kg'
+            ? 'Per Kg'
+            : 'Per Bag';
+const formatToggleUnitLabel = (value?: string) => value === 'per_quintal'
+    ? 'Per Qtl'
+    : value === 'percentage'
+        ? '%'
+        : value === 'lumps'
+            ? 'Lumps'
+            : value === 'per_kg'
+                ? 'Per Kg'
+                : 'Per Bag';
 const formatShortDateTime = (value?: string | null) => {
     if (!value) return '';
     try {
@@ -86,8 +141,14 @@ interface AdminSampleBook2Props {
     excludeEntryType?: string;
 }
 
+type PricingDetailState = {
+    entry: SampleEntry;
+    mode: 'offer' | 'final';
+};
+
 const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeEntryType }) => {
     const isRiceBook = entryType === 'RICE_SAMPLE';
+    const tableMinWidth = isRiceBook ? '100%' : '1500px';
     const [entries, setEntries] = useState<SampleEntry[]>([]);
     const [loading, setLoading] = useState(false);
 
@@ -105,6 +166,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
 
     // Detail popup
     const [detailEntry, setDetailEntry] = useState<SampleEntry | null>(null);
+    const [pricingDetail, setPricingDetail] = useState<PricingDetailState | null>(null);
 
     useEffect(() => {
         loadEntries();
@@ -127,7 +189,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
             if (entryType) params.entryType = entryType;
             if (excludeEntryType) params.excludeEntryType = excludeEntryType;
 
-            const response = await axios.get(`${API_URL}/sample-entries/by-role`, {
+            const response = await axios.get(`${API_URL}/sample-entries/ledger/all`, {
                 params,
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -198,21 +260,13 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
         const eventDate = formatShortDateTime((latestEvent as any)?.date || null);
         const hasRemarks = !!(cr?.remarks && String(cr.remarks).trim());
 
-        // SOLD OUT decision
-        if (d === 'SOLDOUT') {
-            return <span style={{ background: '#800000', color: 'white', padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '800' }}>SOLD OUT</span>;
-        }
-
         // Pass Without Cooking = no cooking needed, show dash
         if (d === 'PASS_WITHOUT_COOKING') {
             return <span style={{ color: '#999', fontSize: '10px' }}>-</span>;
         }
-        // FAIL decision = entire entry failed
-        if (d === 'FAIL') {
-            return <span style={{ background: '#ffcdd2', color: '#b71c1c', padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>✕ Failed</span>;
-        }
+        const hasCookingOutcome = (d === 'PASS_WITH_COOKING' || d === 'SOLDOUT' || d === 'FAIL') && cr && cr.status;
         // Pass With Cooking + cooking report submitted = show actual result
-        if (d === 'PASS_WITH_COOKING' && cr && cr.status) {
+        if (hasCookingOutcome) {
             const result = cr.status.toLowerCase();
             let bg = '#f5f5f5'; let color = '#666'; let label = cr.status;
             if (result === 'pass' || result === 'ok') { bg = '#e8f5e9'; color = '#2e7d32'; label = '✓ Pass'; }
@@ -264,6 +318,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
         const s = entry.workflowStatus;
         const d = entry.lotSelectionDecision;
         const cr = entry.cookingReport;
+        const resampleAttempts = Math.max(0, Number(entry.qualityReportAttempts || 0));
         let label = 'Pending';
         let bg = '#ffe0b2';
         let color = '#e65100';
@@ -291,25 +346,92 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
         else if (entry.offering?.finalPrice) { bg = '#e8f5e9'; color = '#2e7d32'; label = 'Pass'; }
         else if (d === 'PASS_WITHOUT_COOKING') { bg = '#e8f5e9'; color = '#2e7d32'; label = 'Pass'; }
         else { bg = '#ffe0b2'; color = '#e65100'; label = 'Pending'; }
-        return <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '10px', backgroundColor: bg, color, fontWeight: '600', whiteSpace: 'nowrap' as const }}>{label}</span>;
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                {resampleAttempts > 1 && (
+                    <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '10px', backgroundColor: '#ffedd5', color: '#7c2d12', fontWeight: '700', whiteSpace: 'nowrap' as const, border: '1px solid #fdba74' }}>
+                        Re-sample {resampleAttempts}
+                    </span>
+                )}
+                <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '10px', backgroundColor: bg, color, fontWeight: '600', whiteSpace: 'nowrap' as const }}>{label}</span>
+            </div>
+        );
     };
 
     const qualityBadge = (entry: SampleEntry) => {
         const qp = entry.qualityParameters;
         const d = entry.lotSelectionDecision;
         if (qp && qp.moisture != null) {
+            const qualityPassed = d === 'PASS_WITH_COOKING' || d === 'PASS_WITHOUT_COOKING' || d === 'SOLDOUT';
             // Check if full quality params are filled (cutting, bend, mix etc.)
             const hasFullQuality = (qp.cutting1 && Number(qp.cutting1) !== 0) || (qp.bend1 && Number(qp.bend1) !== 0) || (qp.mix && Number(qp.mix) !== 0) || (qp.mixS && Number(qp.mixS) !== 0) || (qp.mixL && Number(qp.mixL) !== 0);
             if (hasFullQuality) {
-                if (d === 'PASS_WITH_COOKING' || d === 'PASS_WITHOUT_COOKING') {
+                if (qualityPassed) {
                     return <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '8px' }}><span style={{ background: '#c8e6c9', color: '#2e7d32', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '600' }}>✓ Done</span><span style={{ background: '#a5d6a7', color: '#1b5e20', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>Pass</span></div>;
                 }
                 return <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}><span style={{ background: '#c8e6c9', color: '#2e7d32', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '600' }}>✓ Done</span></div>;
             }
             // Only 100gms data (moisture + grains count) — show 100-Gms so user knows what's done
+            if (qualityPassed) {
+                return <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '8px' }}><span style={{ background: '#fff8e1', color: '#f57f17', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '600' }}>100-Gms</span><span style={{ background: '#a5d6a7', color: '#1b5e20', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>Pass</span></div>;
+            }
             return <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}><span style={{ background: '#fff8e1', color: '#f57f17', padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '600' }}>100-Gms</span></div>;
         }
         return <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center' }}><span style={{ background: '#f5f5f5', color: '#c62828', padding: '2px 6px', borderRadius: '10px', fontSize: '9px' }}>Pending</span></div>;
+    };
+
+    const getChargeText = (value?: number, unit?: string) => {
+        if (value === null || value === undefined || Number(value) === 0) return '-';
+        return `${toNumberText(value)} / ${formatToggleUnitLabel(unit)}`;
+    };
+
+    const getOfferRateText = (offering?: SampleEntry['offering']) => {
+        if (!offering) return '-';
+        const rateValue = offering.offerBaseRateValue ?? offering.offeringPrice;
+        if (!rateValue) return '-';
+        const typeText = offering.baseRateType ? offering.baseRateType.replace(/_/g, '/') : '-';
+        return `Rs ${toNumberText(rateValue)} / ${typeText} / ${formatRateUnitLabel(offering.baseRateUnit)}`;
+    };
+
+    const getFinalRateText = (offering?: SampleEntry['offering']) => {
+        if (!offering) return '-';
+        const rateValue = offering.finalPrice ?? offering.finalBaseRate;
+        if (!rateValue) return '-';
+        const typeText = offering.baseRateType ? offering.baseRateType.replace(/_/g, '/') : '-';
+        return `Rs ${toNumberText(rateValue)} / ${typeText} / ${formatRateUnitLabel(offering.baseRateUnit)}`;
+    };
+
+    const getPricingRows = (offering: NonNullable<SampleEntry['offering']>, mode: 'offer' | 'final') => {
+        const isFinalMode = mode === 'final';
+        const suteValue = isFinalMode ? offering.finalSute : offering.sute;
+        const suteUnit = isFinalMode ? offering.finalSuteUnit : offering.suteUnit;
+
+        return [
+            [isFinalMode ? 'Final Rate' : 'Offer Rate', isFinalMode ? getFinalRateText(offering) : getOfferRateText(offering)],
+            ['Sute', suteValue ? `${toNumberText(suteValue)} / ${formatRateUnitLabel(suteUnit)}` : '-'],
+            ['Moisture', offering.moistureValue ? `${toNumberText(offering.moistureValue)}%` : '-'],
+            ['Hamali', getChargeText(offering.hamali, offering.hamaliUnit)],
+            ['Brokerage', getChargeText(offering.brokerage, offering.brokerageUnit)],
+            ['LF', getChargeText(offering.lf, offering.lfUnit)],
+            ['EGB', offering.egbType === 'mill'
+                ? '0 / Mill'
+                : offering.egbType === 'purchase' && offering.egbValue !== undefined && offering.egbValue !== null
+                    ? `${toNumberText(offering.egbValue)} / Purchase`
+                    : '-'],
+            ['CD', offering.cdEnabled
+                ? offering.cdValue
+                    ? `${toNumberText(offering.cdValue)} / ${formatToggleUnitLabel(offering.cdUnit)}`
+                    : 'Pending'
+                : '-'],
+            ['Bank Loan', offering.bankLoanEnabled
+                ? offering.bankLoanValue
+                    ? `Rs ${formatIndianCurrency(offering.bankLoanValue)} / ${formatToggleUnitLabel(offering.bankLoanUnit)}`
+                    : 'Pending'
+                : '-'],
+            ['Payment', offering.paymentConditionValue
+                ? `${offering.paymentConditionValue} ${offering.paymentConditionUnit === 'month' ? 'Month' : 'Days'}`
+                : '-']
+        ];
     };
 
 
@@ -371,7 +493,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                             {brokerIdx === 0 && <div style={{
                                                 background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
                                                 color: 'white', padding: '6px 10px', fontWeight: '700', fontSize: '14px',
-                                                textAlign: 'center', letterSpacing: '0.5px'
+                                                textAlign: 'center', letterSpacing: '0.5px', minWidth: tableMinWidth
                                             }}>
                                                 {(() => { const d = new Date(brokerEntries[0]?.entryDate); return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`; })()}
                                                 &nbsp;&nbsp;{entryType === 'RICE_SAMPLE' ? 'Rice Sample' : 'Paddy Sample'}
@@ -380,15 +502,16 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                             <div style={{
                                                 background: '#e8eaf6',
                                                 color: '#000', padding: '3px 10px', fontWeight: '700', fontSize: '12px',
-                                                display: 'flex', alignItems: 'center', gap: '4px', borderBottom: '1px solid #c5cae9'
+                                                display: 'flex', alignItems: 'center', gap: '4px', borderBottom: '1px solid #c5cae9', minWidth: tableMinWidth
                                             }}>
                                                 <span style={{ fontSize: '12px', fontWeight: '800' }}>{brokerSeq}.</span> {toTitleCase(brokerName)}
                                             </div>
                                             {/* Table */}
-                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', tableLayout: 'fixed', border: '1px solid #000' }}>
+                                            <table style={{ width: '100%', minWidth: tableMinWidth, borderCollapse: 'collapse', fontSize: '11px', tableLayout: 'fixed', border: '1px solid #000' }}>
                                                 <thead>
                                                     <tr style={{ backgroundColor: entryType === 'RICE_SAMPLE' ? '#4a148c' : '#1a237e', color: 'white' }}>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '3.5%' }}>SL No</th>
+                                                        {!isRiceBook && <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Type</th>}
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Bags</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap', width: '4%' }}>Pkg</th>
                                                         <th style={{ border: '1px solid #000', padding: '3px 4px', fontWeight: '600', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap', width: '12%' }}>Party Name</th>
@@ -407,7 +530,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                                         const qp = entry.qualityParameters;
                                                         const cr = entry.cookingReport;
                                                         const cookingFail = entry.lotSelectionDecision === 'PASS_WITH_COOKING' && cr && cr.status && cr.status.toLowerCase() === 'fail';
-                                                        const rowBg = entry.workflowStatus === 'FAILED' || entry.lotSelectionDecision === 'FAIL' || cookingFail
+                                                        const rowBg = cookingFail
                                                             ? '#fff0f0'
                                                             : entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : entry.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff';
 
@@ -424,6 +547,11 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                                         return (
                                                             <tr key={entry.id} style={{ backgroundColor: rowBg }}>
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', fontWeight: '600', textAlign: 'center', whiteSpace: 'nowrap' }}>{idx + 1}</td>
+                                                                {!isRiceBook && (
+                                                                    <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                                        {entry.entryType === 'LOCATION_SAMPLE' ? 'LS' : entry.entryType === 'DIRECT_LOADED_VEHICLE' ? 'RL' : 'MS'}
+                                                                    </td>
+                                                                )}
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap' }}>{entry.bags || '0'}</td>
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap' }}>{Number(entry.packaging) === 0 ? 'Loose' : `${entry.packaging || '75'} kg`}</td>
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '14px', cursor: 'pointer', color: '#1565c0', fontWeight: '600', textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
@@ -450,16 +578,30 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                                                 }}>
                                                                     {cookingBadge(entry)}
                                                                 </td>
-                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                                <td
+                                                                    onClick={() => entry.offering?.offerBaseRateValue || entry.offering?.offeringPrice ? setPricingDetail({ entry, mode: 'offer' }) : null}
+                                                                    style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', cursor: entry.offering?.offerBaseRateValue || entry.offering?.offeringPrice ? 'pointer' : 'default' }}
+                                                                >
                                                                     {entry.offering?.offerBaseRateValue ? (
-                                                                        <span style={{ fontWeight: '700', color: '#1565c0', fontSize: '11px' }}>₹{entry.offering.offerBaseRateValue}</span>
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'center' }}>
+                                                                            <span style={{ fontWeight: '700', color: '#1565c0', fontSize: '11px' }}>Rs {toNumberText(entry.offering.offerBaseRateValue)}</span>
+                                                                            <span style={{ fontSize: '9px', color: '#5f6368', fontWeight: '700' }}>{(entry.offering.baseRateType || '').replace(/_/g, '/')} / {formatRateUnitLabel(entry.offering.baseRateUnit)}</span>
+                                                                        </div>
                                                                     ) : entry.offering?.offeringPrice ? (
-                                                                        <span style={{ fontWeight: '700', color: '#1565c0', fontSize: '11px' }}>₹{entry.offering.offeringPrice}</span>
+                                                                        <span style={{ fontWeight: '700', color: '#1565c0', fontSize: '11px' }}>Rs {toNumberText(entry.offering.offeringPrice)}</span>
                                                                     ) : '-'}
                                                                 </td>
-                                                                <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                                <td
+                                                                    onClick={() => entry.offering?.finalPrice || entry.offering?.finalBaseRate ? setPricingDetail({ entry, mode: 'final' }) : null}
+                                                                    style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '11px', textAlign: 'center', whiteSpace: 'nowrap', cursor: entry.offering?.finalPrice || entry.offering?.finalBaseRate ? 'pointer' : 'default' }}
+                                                                >
                                                                     {entry.offering?.finalPrice ? (
-                                                                        <span style={{ fontWeight: '700', color: '#2e7d32', fontSize: '11px' }}>₹{entry.offering.finalPrice}</span>
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', alignItems: 'center' }}>
+                                                                            <span style={{ fontWeight: '700', color: '#2e7d32', fontSize: '11px' }}>Rs {toNumberText(entry.offering.finalPrice)}</span>
+                                                                            <span style={{ fontSize: '9px', color: '#5f6368', fontWeight: '700' }}>{(entry.offering.baseRateType || '').replace(/_/g, '/')} / {formatRateUnitLabel(entry.offering.baseRateUnit)}</span>
+                                                                        </div>
+                                                                    ) : entry.offering?.finalBaseRate ? (
+                                                                        <span style={{ fontWeight: '700', color: '#2e7d32', fontSize: '11px' }}>Rs {toNumberText(entry.offering.finalBaseRate)}</span>
                                                                     ) : '-'}
                                                                 </td>
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', whiteSpace: 'nowrap' }}>{statusBadge(entry)}</td>
@@ -652,6 +794,73 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                 )
             }
 
+            {pricingDetail && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        backgroundColor: 'rgba(0,0,0,0.55)',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        zIndex: 1000,
+                        padding: '16px'
+                    }}
+                    onClick={() => setPricingDetail(null)}
+                >
+                    <div
+                        style={{
+                            background: '#ffffff',
+                            width: '100%',
+                            maxWidth: '720px',
+                            borderRadius: '10px',
+                            boxShadow: '0 16px 50px rgba(0,0,0,0.25)',
+                            overflow: 'hidden'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div style={{ background: pricingDetail.mode === 'offer' ? '#1565c0' : '#2e7d32', color: '#fff', padding: '14px 18px' }}>
+                            <div style={{ fontSize: '18px', fontWeight: '800' }}>
+                                {pricingDetail.mode === 'offer' ? 'Offer Details' : 'Final Details'}
+                            </div>
+                            <div style={{ fontSize: '12px', opacity: 0.95, marginTop: '4px' }}>
+                                {toTitleCase(pricingDetail.entry.partyName)} | {toTitleCase(pricingDetail.entry.variety)} | {toTitleCase(pricingDetail.entry.location)}
+                            </div>
+                        </div>
+                        <div style={{ padding: '16px 18px 18px' }}>
+                            {pricingDetail.entry.offering ? (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+                                    {getPricingRows(pricingDetail.entry.offering, pricingDetail.mode).map(([label, value]) => (
+                                        <div key={String(label)} style={{ background: '#f8f9fa', border: '1px solid #dfe3e8', borderRadius: '8px', padding: '10px 12px' }}>
+                                            <div style={{ fontSize: '11px', fontWeight: '700', color: '#5f6368', marginBottom: '4px' }}>{label}</div>
+                                            <div style={{ fontSize: '14px', fontWeight: '700', color: '#1f2937' }}>{value as string}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div style={{ color: '#999', textAlign: 'center', padding: '12px' }}>No pricing data</div>
+                            )}
+                            <button
+                                onClick={() => setPricingDetail(null)}
+                                style={{
+                                    marginTop: '16px',
+                                    width: '100%',
+                                    padding: '9px',
+                                    backgroundColor: pricingDetail.mode === 'offer' ? '#1565c0' : '#2e7d32',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    fontSize: '13px',
+                                    fontWeight: '700',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Pagination */}
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', padding: '16px 0', marginTop: '12px' }}>
                 <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -669,3 +878,5 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
 };
 
 export default AdminSampleBook2;
+
+

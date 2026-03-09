@@ -7,9 +7,7 @@ import CompletedLots from './CompletedLots';
 import SampleEntryPage from './SampleEntry';
 import LotSelection from './LotSelection';
 import CookingReport from './CookingReport';
-import FinalReport from './FinalReport';
-
-type TabKey = 'paddy-samples' | 'pending-lots' | 'cooking-report' | 'lots-passed' | 'loading-lots' | 'completed-lots' | 'sample-book-2' | 'assigning-supervisor' | 'allotted-supervisors';
+type TabKey = 'paddy-samples' | 'pending-lots' | 'cooking-report' | 'loading-lots' | 'completed-lots' | 'sample-book-2' | 'assigning-supervisor' | 'allotted-supervisors';
 
 interface TabConfig {
     key: TabKey;
@@ -20,10 +18,9 @@ interface TabConfig {
 
 const tabs: TabConfig[] = [
     { key: 'paddy-samples', label: 'Paddy Sample Records', icon: '🌾', color: '#2e7d32' },
-    { key: 'sample-book-2', label: 'Sample Book', icon: '📗', color: '#1565c0' },
+    { key: 'sample-book-2', label: 'Paddy Sample Book', icon: '📗', color: '#1565c0' },
     { key: 'pending-lots', label: 'Pending (Sample Selection)', icon: '📋', color: '#3498db' },
     { key: 'cooking-report', label: 'Cooking Book', icon: '🍚', color: '#e67e22' },
-    { key: 'lots-passed', label: 'Final Pass Lots', icon: '✅', color: '#27ae60' },
     { key: 'loading-lots', label: 'Loading Lots', icon: '🚚', color: '#f39c12' },
     { key: 'assigning-supervisor', label: 'Assigning (Loading)', icon: '👷', color: '#d35400' },
     { key: 'allotted-supervisors', label: 'Allotted Supervisors', icon: '💂', color: '#2980b9' },
@@ -113,7 +110,6 @@ const ManagerSampleReports: React.FC = () => {
                 {activeTab === 'paddy-samples' && <SampleEntryPage excludeEntryType="RICE_SAMPLE" />}
                 {activeTab === 'pending-lots' && <LotSelection excludeEntryType="RICE_SAMPLE" />}
                 {activeTab === 'cooking-report' && <CookingReport excludeEntryType="RICE_SAMPLE" />}
-                {activeTab === 'lots-passed' && <FinalReport excludeEntryType="RICE_SAMPLE" />}
                 {activeTab === 'loading-lots' && <LoadingLots excludeEntryType="RICE_SAMPLE" />}
                 {activeTab === 'completed-lots' && <CompletedLots excludeEntryType="RICE_SAMPLE" />}
                 {activeTab === 'sample-book-2' && <AdminSampleBook2 excludeEntryType="RICE_SAMPLE" />}
@@ -125,3 +121,4 @@ const ManagerSampleReports: React.FC = () => {
 };
 
 export default ManagerSampleReports;
+

@@ -1410,6 +1410,35 @@ const startServer = async () => {
         console.log('⚠️ Migration 99 warning:', error.message);
       }
 
+      // Migration 108: Multi-offer support and paddy pricing fields
+      try {
+        const addMultiOfferFields = require('./migrations/108_add_multi_offer_fields');
+        const queryInterface = sequelize.getQueryInterface();
+        await addMultiOfferFields.up(queryInterface, sequelize.Sequelize);
+        console.log('âœ… Migration 108: Multi-offer pricing fields added');
+      } catch (error) {
+        console.log('âš ï¸ Migration 108 warning:', error.message);
+      }
+
+      // Migration 109: Allow decimal payment condition values in sample_entry_offerings
+      try {
+        const makePaymentConditionDecimal = require('./migrations/109_make_payment_condition_decimal');
+        const queryInterface = sequelize.getQueryInterface();
+        await makePaymentConditionDecimal.up(queryInterface, sequelize.Sequelize);
+        console.log('? Migration 109: payment_condition_value now supports decimals');
+      } catch (error) {
+        console.log('?? Migration 109 warning:', error.message);
+      }
+
+      // Migration 110: Add final_remarks to sample_entry_offerings
+      try {
+        const addFinalRemarksToOfferings = require('./migrations/110_add_final_remarks_to_sample_entry_offerings');
+        const queryInterface = sequelize.getQueryInterface();
+        await addFinalRemarksToOfferings.up(queryInterface, sequelize.Sequelize);
+        console.log('Migration 110: final_remarks added to sample_entry_offerings');
+      } catch (error) {
+        console.log('Migration 110 warning:', error.message);
+      }
       // Migration 96b: Add bend2 column to physical_inspections table
       try {
         const addBend2ToPhysicalInspections = require('./migrations/96_add_bend2_to_physical_inspections');
@@ -1533,3 +1562,4 @@ const startServer = async () => {
 startServer();
 
 module.exports = app;
+

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import LotSelection from './LotSelection';
 import CookingReport from './CookingReport';
-import FinalReport from './FinalReport';
+import FinalPassLots from './FinalPassLots';
 import LoadingLots from './LoadingLots';
 import CompletedLots from './CompletedLots';
 import AdminSampleBook2 from './AdminSampleBook2';
@@ -18,7 +18,7 @@ interface TabConfig {
 
 const tabs: TabConfig[] = [
   { key: 'paddy-samples', label: 'Paddy Sample Records', icon: '🌾', color: '#2e7d32' },
-  { key: 'sample-book-2', label: 'Sample Book', icon: '📗', color: '#1565c0' },
+  { key: 'sample-book-2', label: 'Paddy Sample Book', icon: '📗', color: '#1565c0' },
   { key: 'pending-lots', label: 'Pending (Sample Selection)', icon: '📋', color: '#3498db' },
   { key: 'cooking-report', label: 'Cooking Book', icon: '🍚', color: '#e67e22' },
   { key: 'lots-passed', label: 'Final Pass Lots', icon: '✅', color: '#27ae60' },
@@ -109,7 +109,7 @@ const OwnerSampleReports: React.FC = () => {
         {activeTab === 'paddy-samples' && <SampleEntryPage excludeEntryType="RICE_SAMPLE" />}
         {activeTab === 'pending-lots' && <LotSelection excludeEntryType="RICE_SAMPLE" />}
         {activeTab === 'cooking-report' && <CookingReport excludeEntryType="RICE_SAMPLE" />}
-        {activeTab === 'lots-passed' && <FinalReport excludeEntryType="RICE_SAMPLE" />}
+        {activeTab === 'lots-passed' && <FinalPassLots excludeEntryType="RICE_SAMPLE" />}
         {activeTab === 'loading-lots' && <LoadingLots excludeEntryType="RICE_SAMPLE" />}
         {activeTab === 'completed-lots' && <CompletedLots excludeEntryType="RICE_SAMPLE" />}
         {activeTab === 'sample-book-2' && <AdminSampleBook2 excludeEntryType="RICE_SAMPLE" />}

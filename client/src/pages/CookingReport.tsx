@@ -20,12 +20,17 @@ interface SampleEntry {
   entryType?: string;
   lorryNumber?: string;
   sampleCollectedBy?: string;
+  lotSelectionDecision?: string;
+  lotSelectionAt?: string;
+  qualityReportAttempts?: number;
   qualityParameters?: {
     grainsCount?: number;
     reportedBy?: string;
     kandu?: number;
     oil?: number;
     mixKandu?: number;
+    createdAt?: string;
+    updatedAt?: string;
   };
   cookingReport?: {
     status: string;
@@ -33,6 +38,7 @@ interface SampleEntry {
     cookingDoneBy?: string;
     cookingApprovedBy?: string;
     history?: any[];
+    updatedAt?: string;
   };
 }
 
@@ -42,6 +48,11 @@ interface SupervisorUser {
 }
 
 const toTitleCase = (str: string) => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : '';
+const getTimeValue = (value?: string | null) => {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+};
 
 interface CookingReportProps {
   entryType?: string;
@@ -411,6 +422,24 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
   };
 
   const getStatusBadge = (entry: SampleEntry) => {
+    const needsFreshCookingAttempt =
+      entry.lotSelectionDecision === 'PASS_WITH_COOKING'
+      && getTimeValue(entry.lotSelectionAt) > getTimeValue(entry.cookingReport?.updatedAt);
+    const resampleAttempts = Math.max(0, Number(entry.qualityReportAttempts || 0));
+    const resampleBadge = resampleAttempts > 1 ? (
+      <span style={{ color: '#7c2d12', backgroundColor: '#ffedd5', border: '1px solid #fdba74', fontWeight: '700', padding: '2px 6px', borderRadius: '10px', fontSize: '10px' }}>
+        Re-sample {resampleAttempts}
+      </span>
+    ) : null;
+
+    if (needsFreshCookingAttempt) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+          {resampleBadge}
+          <span style={{ color: '#e67e22', fontWeight: '700' }}>Pending New Cooking</span>
+        </div>
+      );
+    }
     if (!entry.cookingReport) {
       return <span style={{ color: '#e67e22', fontWeight: '700' }}>⏳ Pending</span>;
     }
@@ -440,21 +469,24 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
     }
 
     return (
-      <span
-        onClick={() => handleOpenHistory(entry, 'all')}
-        style={{
-          color: info.color,
-          backgroundColor: info.bg,
-          fontWeight: '700',
-          padding: '2px 8px',
-          borderRadius: '4px',
-          fontSize: '11px',
-          cursor: 'pointer'
-        }}
-        title="Click to see full history"
-      >
-        {info.label}
-      </span>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+        {resampleBadge}
+        <span
+          onClick={() => handleOpenHistory(entry, 'all')}
+          style={{
+            color: info.color,
+            backgroundColor: info.bg,
+            fontWeight: '700',
+            padding: '2px 8px',
+            borderRadius: '4px',
+            fontSize: '11px',
+            cursor: 'pointer'
+          }}
+          title="Click to see full history"
+        >
+          {info.label}
+        </span>
+      </div>
     );
   };
 
@@ -879,7 +911,10 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                                             const h = cr?.history || [];
                                             const lastH = h.length > 0 ? h[h.length - 1] : null;
                                             const waitingAdmin = lastH && !lastH.status && lastH.cookingDoneBy;
-                                            const waitingStaff = !cr || (cr.status === 'RECHECK' && !waitingAdmin) || (!cr.cookingDoneBy && !waitingAdmin);
+                                            const needsFreshCookingAttempt =
+                                              entry.lotSelectionDecision === 'PASS_WITH_COOKING'
+                                              && getTimeValue(entry.lotSelectionAt) > getTimeValue(cr?.updatedAt);
+                                            const waitingStaff = needsFreshCookingAttempt || !cr || (cr.status === 'RECHECK' && !waitingAdmin) || (!cr.cookingDoneBy && !waitingAdmin);
 
                                             if (user?.role !== 'staff' || waitingStaff) {
                                               return (
@@ -1024,7 +1059,10 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                                             const h = cr?.history || [];
                                             const lastH = h.length > 0 ? h[h.length - 1] : null;
                                             const waitingAdmin = lastH && !lastH.status && lastH.cookingDoneBy;
-                                            const waitingStaff = !cr || (cr.status === 'RECHECK' && !waitingAdmin) || (!cr.cookingDoneBy && !waitingAdmin);
+                                            const needsFreshCookingAttempt =
+                                              entry.lotSelectionDecision === 'PASS_WITH_COOKING'
+                                              && getTimeValue(entry.lotSelectionAt) > getTimeValue(cr?.updatedAt);
+                                            const waitingStaff = needsFreshCookingAttempt || !cr || (cr.status === 'RECHECK' && !waitingAdmin) || (!cr.cookingDoneBy && !waitingAdmin);
 
                                             if (user?.role !== 'staff' || waitingStaff) {
                                               return (

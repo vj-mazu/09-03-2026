@@ -311,6 +311,11 @@ class SampleEntryRepository {
     if (filters.party) where.partyName = { [Op.iLike]: `%${filters.party}%` };
     if (filters.location) where.location = { [Op.iLike]: `%${filters.location}%` };
     if (filters.status) where.workflowStatus = filters.status;
+    if (filters.entryType) {
+      where.entryType = filters.entryType;
+    } else if (filters.excludeEntryType) {
+      where.entryType = { [Op.ne]: filters.excludeEntryType };
+    }
 
     const page = filters.page || 1;
     const pageSize = filters.pageSize || 50;
@@ -328,6 +333,7 @@ class SampleEntryRepository {
           },
           { model: User, as: 'lotSelectionByUser', attributes: ['id', 'username'] },
           { model: CookingReport, as: 'cookingReport', required: false },
+          { model: SampleEntryOffering, as: 'offering', required: false },
           {
             model: LotAllotment, as: 'lotAllotment', required: false,
             include: [
@@ -381,6 +387,7 @@ class SampleEntryRepository {
           },
           { model: User, as: 'lotSelectionByUser', attributes: ['id', 'username'] },
           { model: CookingReport, as: 'cookingReport', required: false },
+          { model: SampleEntryOffering, as: 'offering', required: false },
           {
             model: LotAllotment, as: 'lotAllotment', required: false,
             include: [
