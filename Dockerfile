@@ -27,7 +27,7 @@ WORKDIR /app
 COPY --from=backend /app/server ./server
 
 # Copy built frontend
-COPY --from=frontend-build /app/client/dist ./client/dist
+COPY --from=frontend-build /app/client/build ./client/build
 
 # Environment
 ENV NODE_ENV=production
