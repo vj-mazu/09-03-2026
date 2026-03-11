@@ -27,6 +27,7 @@ export type PriceType = 'BAGS' | 'LOOSE';
 
 export interface SampleEntry {
   id: number;
+  serialNo?: number;
   entryDate: string;
   entryType: EntryType;
   brokerName: string;
@@ -50,7 +51,11 @@ export interface SampleEntry {
     id: number;
     username: string;
   };
-  createdByUserId?: number; // Make optional for creation
+  qualityReportAttempts?: number;
+  qualityAttemptDetails?: any[];
+  qualityReportHistory?: string[];
+  sampleCollectedHistory?: string[];
+  createdByUserId?: number;
   createdAt: string;
   updatedAt: string;
 }

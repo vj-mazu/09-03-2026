@@ -180,6 +180,9 @@ const LotSelection: React.FC<LotSelectionProps> = ({ entryType, excludeEntryType
       const dateA = new Date(a.entryDate).getTime();
       const dateB = new Date(b.entryDate).getTime();
       if (dateA !== dateB) return dateB - dateA; // Primary sort: Date DESC
+      const serialA = Number.isFinite(Number(a.serialNo)) ? Number(a.serialNo) : null;
+      const serialB = Number.isFinite(Number(b.serialNo)) ? Number(b.serialNo) : null;
+      if (serialA !== null && serialB !== null && serialA !== serialB) return serialA - serialB;
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(); // Secondary sort: CreatedAt ASC for stable Sl No
     });
 
@@ -275,6 +278,12 @@ const LotSelection: React.FC<LotSelectionProps> = ({ entryType, excludeEntryType
             return (
               <div key={dateKey} style={{ marginBottom: '20px' }}>
                 {Object.entries(brokerGroups).sort(([a], [b]) => a.localeCompare(b)).map(([brokerName, brokerEntries], brokerIdx) => {
+                  const orderedEntries = [...brokerEntries].sort((a, b) => {
+                    const serialA = Number.isFinite(Number(a.serialNo)) ? Number(a.serialNo) : null;
+                    const serialB = Number.isFinite(Number(b.serialNo)) ? Number(b.serialNo) : null;
+                    if (serialA !== null && serialB !== null && serialA !== serialB) return serialA - serialB;
+                    return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+                  });
                   brokerSeq++;
                   let slNo = 0;
                   return (
@@ -345,7 +354,7 @@ const LotSelection: React.FC<LotSelectionProps> = ({ entryType, excludeEntryType
                           )}
                         </thead>
                         <tbody>
-                          {brokerEntries.map((entry, index) => {
+                        {orderedEntries.map((entry, index) => {
                             const displaySlNo = entry.serialNo || (index + 1);
                             const qp = entry.qualityParameters;
                             const fmtVal = (v: any, forceDecimal = false, precision = 2) => {
@@ -372,6 +381,7 @@ const LotSelection: React.FC<LotSelectionProps> = ({ entryType, excludeEntryType
                             };
                             const hasFullQuality = qp && ((qp.cutting1 && Number(qp.cutting1) !== 0) || (qp.bend1 && Number(qp.bend1) !== 0) || (qp.mix && Number(qp.mix) !== 0));
                             const has100Grams = qp && (qp.moisture != null || (qp as any).dryMoisture != null) && !hasFullQuality;
+                            const isResampleRow = (entry as any).lotSelectionDecision === 'FAIL';
                             return (
                               <tr key={entry.id} style={{ backgroundColor: entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : entry.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff' }}>
                                 <td style={{ border: '1px solid #000', padding: '2px 3px', textAlign: 'center', verticalAlign: 'middle', fontWeight: '600', fontSize: '12px' }}>{displaySlNo}</td>
@@ -452,9 +462,11 @@ const LotSelection: React.FC<LotSelectionProps> = ({ entryType, excludeEntryType
                                         <button onClick={() => handleDecision(entry.id, 'PASS_WITH_COOKING')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '4px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#28a745', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', boxShadow: '0 1px 2px rgba(0,0,0,0.2)', whiteSpace: 'nowrap' }}>
                                           {isSubmitting ? '...' : <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}><span style={{ fontSize: '12px' }}>🍲</span> Pass for Cook</span>}
                                         </button>
-                                        <button onClick={() => handleDecision(entry.id, 'PASS_WITHOUT_COOKING')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '3px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#f39c12', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', whiteSpace: 'nowrap' }}>
-                                          {isSubmitting ? '...' : '✅ Pass'}
-                                        </button>
+                                        {!isResampleRow && (
+                                          <button onClick={() => handleDecision(entry.id, 'PASS_WITHOUT_COOKING')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '3px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#f39c12', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', whiteSpace: 'nowrap' }}>
+                                            {isSubmitting ? '...' : '✅ Pass'}
+                                          </button>
+                                        )}
                                         <button onClick={() => handleDecision(entry.id, 'FAIL')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '3px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#d9534f', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', whiteSpace: 'nowrap' }}>
                                           {isSubmitting ? '...' : '❌ Fail'}
                                         </button>
@@ -534,7 +546,7 @@ const LotSelection: React.FC<LotSelectionProps> = ({ entryType, excludeEntryType
 
                                         const badgeConfig = {
                                           'PASS': { color: '#27ae60', label: 'Passed', icon: '✅' },
-                                          'FAIL': { color: '#c0392b', label: 'Failed', icon: '❌' },
+                                          'FAIL': { color: '#8a6400', label: 'Resample', icon: '🔁' },
                                           'RECHECK': { color: '#e67e22', label: 'Recheck', icon: '📝' },
                                           'MEDIUM': { color: '#27ae60', label: 'Passed', icon: '✅' },
                                         };
@@ -572,10 +584,12 @@ const LotSelection: React.FC<LotSelectionProps> = ({ entryType, excludeEntryType
                                     </td>
                                     <td style={{ border: '1px solid #000', padding: '2px 2px', textAlign: 'center', verticalAlign: 'middle' }}>
                                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', justifyContent: 'center' }}>
-                                        <button onClick={() => handleDecision(entry.id, 'PASS_WITHOUT_COOKING')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '4px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#28a745', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', width: '48%', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
-                                          {isSubmitting ? '...' : 'Pass'}
-                                        </button>
-                                        <button onClick={() => handleDecision(entry.id, 'FAIL')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '4px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#d9534f', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', width: '48%', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+                                        {!isResampleRow && (
+                                          <button onClick={() => handleDecision(entry.id, 'PASS_WITHOUT_COOKING')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '4px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#28a745', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', width: '48%', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
+                                            {isSubmitting ? '...' : 'Pass'}
+                                          </button>
+                                        )}
+                                        <button onClick={() => handleDecision(entry.id, 'FAIL')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '4px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#d9534f', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', width: isResampleRow ? '100%' : '48%', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
                                           {isSubmitting ? '...' : 'Fail'}
                                         </button>
                                         <button onClick={() => handleDecision(entry.id, 'SOLDOUT')} disabled={isSubmitting} style={{ fontSize: '10px', padding: '4px 6px', backgroundColor: isSubmitting ? '#e0e0e0' : '#800000', color: isSubmitting ? '#999' : 'white', border: 'none', borderRadius: '4px', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '800', width: '100%', marginTop: '2px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>

@@ -50,6 +50,7 @@ const SampleEntryPage: React.FC<{
   // Sample Collected By — radio state
   const [sampleCollectType, setSampleCollectType] = useState<'broker' | 'supervisor'>('broker');
   const [paddySupervisors, setPaddySupervisors] = useState<{ id: number; username: string; staffType?: string | null }[]>([]);
+  const [assignments, setAssignments] = useState<Record<string, string>>({});
 
   // Title Case helper: first letter capital, rest small
   const toTitleCase = (str: string) => str.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
@@ -78,6 +79,10 @@ const SampleEntryPage: React.FC<{
       )
     ).sort((left, right) => left.localeCompare(right));
   }, [isRiceQualityEntry, paddySupervisors, qualityUsers, user?.role, user?.username]);
+  const locationSupervisors = useMemo(
+    () => paddySupervisors.filter((supervisor) => String(supervisor.staffType || '').toLowerCase() === 'location'),
+    [paddySupervisors]
+  );
 
   // Filters
   const [filterDateFrom, setFilterDateFrom] = useState('');
@@ -480,11 +485,6 @@ const SampleEntryPage: React.FC<{
   const handleViewEntry = (entry: SampleEntry) => {
     setSelectedEntry(entry);
     setShowQualityModal(true);
-    const isPaddyResampleEntry =
-      entry.entryType !== 'RICE_SAMPLE'
-      && entry.workflowStatus === 'QUALITY_CHECK'
-      && entry.lotSelectionDecision === 'FAIL';
-
     // Fetch existing quality parameters if they exist
     const fetchQualityParameters = async () => {
       try {
@@ -498,7 +498,14 @@ const SampleEntryPage: React.FC<{
         // If quality parameters exist, populate the form with saved data
         if (response.data.qualityParameters) {
           setQualityRecordExists(true);
-          if (isPaddyResampleEntry) {
+          const resampleDecision = response.data?.lotSelectionDecision || entry.lotSelectionDecision;
+          const resampleFlow = entry.entryType !== 'RICE_SAMPLE' && resampleDecision === 'FAIL';
+          const lotSelectionAt = response.data?.lotSelectionAt || entry.lotSelectionAt;
+          const qpUpdatedAt = response.data.qualityParameters?.updatedAt || response.data.qualityParameters?.createdAt;
+          const resampleQualitySaved = resampleFlow
+            && !!lotSelectionAt
+            && getTimeValue(qpUpdatedAt) >= getTimeValue(lotSelectionAt);
+          if (resampleFlow && (!lotSelectionAt || !resampleQualitySaved)) {
             resetQualityForm();
             return;
           }
@@ -671,7 +678,7 @@ const SampleEntryPage: React.FC<{
 
   const isPaddyResampleModal = !!selectedEntry
     && selectedEntry.entryType !== 'RICE_SAMPLE'
-    && selectedEntry.workflowStatus === 'QUALITY_CHECK'
+    && (selectedEntry.workflowStatus === 'QUALITY_CHECK' || selectedEntry.workflowStatus === 'LOT_ALLOTMENT')
     && selectedEntry.lotSelectionDecision === 'FAIL';
   const showQualityAsUpdate = hasExistingQualityData && !isPaddyResampleModal;
 
@@ -985,9 +992,12 @@ const SampleEntryPage: React.FC<{
               if (entry.entryType !== 'LOCATION_SAMPLE') return false;
               if ((entry as any).sampleGivenToOffice) return false; // If given to Mill, hide from Location Sample tab
 
-              // Location staff only see their OWN entries in this tab
-              if (user?.role === 'staff' && (user as any)?.staffType === 'location' && entry.createdByUserId !== user?.id) {
-                return false;
+              // Location staff only see their OWN entries OR entries assigned to them (resample)
+              if (user?.role === 'physical_supervisor') {
+                const isCreator = entry.createdByUserId === user?.id;
+                const isAssigned = !!(entry.sampleCollectedBy && user?.username)
+                  && entry.sampleCollectedBy.trim().toLowerCase() === user.username.trim().toLowerCase();
+                if (!isCreator && !isAssigned) return false;
               }
             }
             if (activeTab === 'MILL_SAMPLE') {
@@ -1007,20 +1017,38 @@ const SampleEntryPage: React.FC<{
                 return !hasQuality;
               }
 
-              // Quality completed entries only show in Sample Book
-              const isPaddyResample = filterEntryType !== 'RICE_SAMPLE'
-                && entry.workflowStatus === 'QUALITY_CHECK'
-                && entry.lotSelectionDecision === 'FAIL';
-              if (entry.workflowStatus !== 'STAFF_ENTRY' && !isPaddyResample) return false;
+              // Hide if it's a resample that already has new quality saved
+              const qp = (entry as any).qualityParameters;
+              const resampleQualitySaved = filterEntryType !== 'RICE_SAMPLE' && entry.lotSelectionDecision === 'FAIL' && !!entry.lotSelectionAt && qp && getTimeValue(qp.updatedAt || qp.createdAt) >= getTimeValue(entry.lotSelectionAt);
+
+              const isAssignedToCurrentStaff =
+                user?.role !== 'staff'
+                || (!!entry.sampleCollectedBy && !!user?.username && entry.sampleCollectedBy.trim().toLowerCase() === user.username.trim().toLowerCase());
+              const isPendingPaddyResample = filterEntryType !== 'RICE_SAMPLE' && entry.lotSelectionDecision === 'FAIL' && !resampleQualitySaved && !!entry.sampleCollectedBy && isAssignedToCurrentStaff;
+              if (entry.workflowStatus !== 'STAFF_ENTRY' && !isPendingPaddyResample) return false;
             }
             if (activeTab === 'LOCATION_SAMPLE') {
-              // Quality completed entries only show in Sample Book
-              const isPaddyResample = filterEntryType !== 'RICE_SAMPLE'
-                && entry.workflowStatus === 'QUALITY_CHECK'
-                && entry.lotSelectionDecision === 'FAIL';
-              if (entry.workflowStatus !== 'STAFF_ENTRY' && !isPaddyResample) return false;
+              // Hide if it's a resample that already has new quality saved
+              const qp = (entry as any).qualityParameters;
+              const resampleQualitySaved = filterEntryType !== 'RICE_SAMPLE' && entry.lotSelectionDecision === 'FAIL' && !!entry.lotSelectionAt && qp && getTimeValue(qp.updatedAt || qp.createdAt) >= getTimeValue(entry.lotSelectionAt);
+              // Also hide normal Location Samples once any quality is saved so they move to Sample Book
+              const hasQuality = qp && qp.moisture != null;
+
+              const isAssignedToCurrentStaff =
+                user?.role !== 'staff'
+                || (!!entry.sampleCollectedBy && !!user?.username && entry.sampleCollectedBy.trim().toLowerCase() === user.username.trim().toLowerCase());
+              const isPendingPaddyResample = filterEntryType !== 'RICE_SAMPLE' && entry.lotSelectionDecision === 'FAIL' && !resampleQualitySaved && !!entry.sampleCollectedBy && isAssignedToCurrentStaff;
+              if (entry.workflowStatus !== 'STAFF_ENTRY' && !isPendingPaddyResample) return false;
+              if (!isPendingPaddyResample && hasQuality) return false;
             }
             if (activeTab === 'SAMPLE_BOOK') {
+              // Hide pending-resample entries from Sample Book — they should only appear in Location Sample tab
+              if (filterEntryType !== 'RICE_SAMPLE' && entry.lotSelectionDecision === 'FAIL') {
+                const qp = (entry as any).qualityParameters;
+                const resampleQualitySaved = !!entry.lotSelectionAt && qp
+                  && getTimeValue(qp.updatedAt || qp.createdAt) >= getTimeValue(entry.lotSelectionAt);
+                if (!resampleQualitySaved) return false;
+              }
               if (filterEntryType === 'RICE_SAMPLE') {
                 // For Rice Book, only show items with some quality details filled (effectively hasQuality).
                 // "Has quality" logic from below row rendering: moisture + (cutting or bend or mix)
@@ -1109,34 +1137,46 @@ const SampleEntryPage: React.FC<{
                           </tr>
                         </thead>
                         <tbody>
-                          {[...brokerEntries].reverse().map((entry, index) => {
+                          {[...brokerEntries].sort((a, b) => {
+                            const serialA = Number.isFinite(Number(a.serialNo)) ? Number(a.serialNo) : null;
+                            const serialB = Number.isFinite(Number(b.serialNo)) ? Number(b.serialNo) : null;
+                            if (serialA !== null && serialB !== null && serialA !== serialB) return serialA - serialB;
+                            return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+                          }).map((entry, index) => {
                             slNo++;
                             const qp = (entry as any).qualityParameters;
+                            const resampleAttempts = Math.max(0, Number((entry as any).qualityReportAttempts || 0));
                             const isPaddyResampleWorkflow =
                               filterEntryType !== 'RICE_SAMPLE'
-                              && entry.workflowStatus === 'QUALITY_CHECK'
                               && entry.lotSelectionDecision === 'FAIL';
                             const resampleQualitySaved =
                               isPaddyResampleWorkflow
+                              && !!entry.lotSelectionAt
                               && qp
                               && getTimeValue(qp.updatedAt || qp.createdAt) >= getTimeValue(entry.lotSelectionAt);
-                            const isPaddyResampleEntry = isPaddyResampleWorkflow && !resampleQualitySaved;
+                            const isPaddyResampleEntry = isPaddyResampleWorkflow && (!entry.lotSelectionAt || !resampleQualitySaved) && !!entry.sampleCollectedBy;
                             const hasQuality = qp && qp.moisture != null && ((qp.cutting1 && Number(qp.cutting1) !== 0) || (qp.bend1 && Number(qp.bend1) !== 0) || (qp.mix && Number(qp.mix) !== 0));
                             const has100Grams = entry.entryType !== 'RICE_SAMPLE' && qp && qp.moisture != null && !hasQuality;
                             const showResampleQualityCompleted = isPaddyResampleWorkflow && resampleQualitySaved && hasQuality;
                             const showResample100GramsCompleted = isPaddyResampleWorkflow && resampleQualitySaved && has100Grams;
+                            const showDetailedQualityStatus = false;
 
-                            // Location staff restriction: only the creator can enter/edit quality
-                            const isLocationStaff = user?.role === 'staff' && (user as any)?.staffType === 'location';
+                            // Location staff restriction: only the creator can enter/edit quality FOR LOCATION SAMPLES
+                            const isLocationStaff = user?.role === 'physical_supervisor';
+                            const isLocationSample = entry.entryType === 'LOCATION_SAMPLE';
                             const isEntryCreator = (entry as any).creator?.id === user?.id || (entry as any).createdByUserId === user?.id;
-                            const canEditQuality = !isLocationStaff || isEntryCreator;
+                            const isAssignedCollector = !!(entry.sampleCollectedBy && user?.username)
+                              && entry.sampleCollectedBy.trim().toLowerCase() === user.username.trim().toLowerCase();
+                            // Location staff can only edit Location Samples if they are the creator OR if it was assigned to them
+                            const canEditQuality = !(isLocationStaff && isLocationSample) || isEntryCreator || isAssignedCollector;
+                            const canAssignResample = ['admin', 'manager', 'owner'].includes(String(user?.role || '').toLowerCase());
 
                             const handleNextClick = () => {
                               handleViewEntry(entry);
                             };
 
                             return (
-                              <tr key={entry.id} style={{ backgroundColor: entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : entry.entryType === 'LOCATION_SAMPLE' ? '#ffcc80' : '#ffffff' }}>
+                              <tr key={entry.id} style={{ backgroundColor: isPaddyResampleWorkflow ? '#fff3e0' : entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : entry.entryType === 'LOCATION_SAMPLE' ? '#ffcc80' : '#ffffff', border: isPaddyResampleWorkflow ? '2px solid #f4a460' : undefined }}>
                                 <td style={{ padding: '1px 4px', textAlign: 'center', fontWeight: '700', fontSize: '13px', verticalAlign: 'middle' }}>{slNo}</td>
                                 {filterEntryType !== 'RICE_SAMPLE' && (
                                   <td style={{ padding: '1px 4px', textAlign: 'center', fontSize: '11px', fontWeight: '700', lineHeight: '1.2', color: entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#1565c0' : entry.entryType === 'LOCATION_SAMPLE' ? '#e65100' : entry.entryType === 'RICE_SAMPLE' ? '#2e7d32' : '#333' }}>{entry.entryType === 'DIRECT_LOADED_VEHICLE' ? 'RL' : entry.entryType === 'LOCATION_SAMPLE' ? 'LS' : entry.entryType === 'RICE_SAMPLE' ? 'RS' : 'MS'}</td>
@@ -1149,7 +1189,23 @@ const SampleEntryPage: React.FC<{
                                   if (pkg.toLowerCase().includes('tons')) return pkg;
                                   return `${pkg} Kg`;
                                 })()}</td>
-                                <td style={{ padding: '1px 4px', textAlign: 'left', fontSize: '14px', lineHeight: '1.2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toTitleCase(entry.partyName)}{entry.entryType === 'DIRECT_LOADED_VEHICLE' && (entry as any).lorryNumber ? <div style={{ fontSize: '13px', color: '#1565c0', fontWeight: '600' }}>{((entry as any).lorryNumber).toUpperCase()}</div> : ''}</td>
+                                <td style={{ padding: '1px 4px', textAlign: 'left', fontSize: '14px', lineHeight: '1.2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {(() => {
+                                    const party = (entry.partyName || '').trim();
+                                    const lorry = (entry as any).lorryNumber ? String((entry as any).lorryNumber).toUpperCase() : '';
+                                    if (party) {
+                                      return (
+                                        <>
+                                          {toTitleCase(party)}
+                                          {entry.entryType === 'DIRECT_LOADED_VEHICLE' && lorry ? (
+                                            <div style={{ fontSize: '13px', color: '#1565c0', fontWeight: '600' }}>{lorry}</div>
+                                          ) : null}
+                                        </>
+                                      );
+                                    }
+                                    return lorry || '-';
+                                  })()}
+                                </td>
                                 <td style={{ padding: '1px 4px', textAlign: 'left', fontSize: '14px', lineHeight: '1.2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toTitleCase(entry.location)}</td>
 
                                 <td style={{ padding: '1px 4px', textAlign: 'left', fontSize: '14px', lineHeight: '1.2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1161,7 +1217,69 @@ const SampleEntryPage: React.FC<{
                                 <td style={{ padding: '0px 2px', textAlign: 'left', lineHeight: '1.1' }}>
                                   <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-start', flexWrap: 'wrap', alignItems: 'center' }}>
 
-                                    {isPaddyResampleEntry && canEditQuality ? (
+                                    {isPaddyResampleWorkflow && entry.lotSelectionDecision === 'FAIL' && !entry.sampleCollectedBy && canAssignResample ? (
+                                      <div style={{ display: 'flex', gap: '4px', flexDirection: 'column', width: '100%', padding: '2px 0' }}>
+                                        <div style={{ fontSize: '10px', fontWeight: 800, color: '#c62828' }}>Assign Supervisor:</div>
+                                        <select
+                                          value={assignments[entry.id] ?? ''}
+                                          onChange={(e) => setAssignments(prev => ({ ...prev, [entry.id]: e.target.value }))}
+                                          style={{ padding: '2px 4px', fontSize: '10px', borderRadius: '3px', border: '1px solid #ccc' }}
+                                        >
+                                          <option value="">Select Staff</option>
+                                          {locationSupervisors.map(sup => <option key={sup.id} value={sup.username}>{sup.username}</option>)}
+                                        </select>
+                                        <button
+                                          onClick={async () => {
+                                            const selected = assignments[entry.id];
+                                            if (!selected) {
+                                              showNotification('Select a supervisor to assign', 'error');
+                                              return;
+                                            }
+                                            try {
+                                              const token = localStorage.getItem('token');
+                                              const payload: any = {
+                                                sampleCollectedBy: selected
+                                              };
+                                              if (entry.entryType !== 'LOCATION_SAMPLE') {
+                                                payload.entryType = 'LOCATION_SAMPLE';
+                                              }
+                                              await axios.put(`${API_URL}/sample-entries/${entry.id}`, payload, {
+                                                headers: { Authorization: `Bearer ${token}` }
+                                              });
+                                              showNotification('Resample user assigned successfully', 'success');
+                                              const res = await axios.get(`${API_URL}/sample-entries/sample-book`, {
+                                                params: {
+                                                  page,
+                                                  pageSize: PAGE_SIZE,
+                                                  ...(filterDateFrom && { startDate: filterDateFrom }),
+                                                  ...(filterDateTo && { endDate: filterDateTo }),
+                                                  ...(filterBroker && { broker: filterBroker })
+                                                },
+                                                headers: { Authorization: `Bearer ${token}` }
+                                              });
+                                              const data = res.data as any;
+                                              setEntries(data.entries || []);
+                                            } catch (error: any) {
+                                              showNotification(error.response?.data?.error || 'Failed to assign user', 'error');
+                                            }
+                                          }}
+                                          style={{
+                                            padding: '3px',
+                                            background: '#1976d2',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '3px',
+                                            fontSize: '10px',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          Assign
+                                        </button>
+                                      </div>
+                                    ) : isPaddyResampleWorkflow && entry.lotSelectionDecision === 'FAIL' && !entry.sampleCollectedBy ? (
+                                      <span style={{ fontSize: '10px', fontWeight: 800, color: '#c62828' }}>Pending Supervisor Assignment</span>
+                                    ) : isPaddyResampleEntry && canEditQuality ? (
                                       <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-start' }}>
                                         <button
                                           onClick={() => handleNextClick()}
@@ -1210,21 +1328,50 @@ const SampleEntryPage: React.FC<{
                                       </>
                                     ) : hasQuality ? (
                                       <>
-                                        <span
+                                        <div
                                           onClick={() => canEditQuality ? setExpandedEntryId(expandedEntryId === entry.id ? null : entry.id) : null}
                                           style={{
-                                            fontSize: '11px',
-                                            padding: '3px 8px',
-                                            backgroundColor: showResampleQualityCompleted ? '#ccfbf1' : '#e8f5e9',
-                                            color: showResampleQualityCompleted ? '#115e59' : '#2e7d32',
-                                            borderRadius: '3px',
-                                            fontWeight: '700',
-                                            border: showResampleQualityCompleted ? '1.5px solid #14b8a6' : '1.5px solid #66bb6a',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'flex-start',
+                                            gap: '2px',
                                             cursor: canEditQuality ? 'pointer' : 'default'
                                           }}
                                         >
-                                          ✓ Quality Completed
-                                        </span>
+                                          {showDetailedQualityStatus ? (
+                                            qualityAttemptLabels.map((label, idx) => (
+                                              <span
+                                                key={`${entry.id}-quality-label-${idx}`}
+                                                style={{
+                                                  fontSize: '10px',
+                                                  padding: '2px 6px',
+                                                  backgroundColor: idx === 0 ? '#e8f5e9' : '#ccfbf1',
+                                                  color: idx === 0 ? '#2e7d32' : '#115e59',
+                                                  borderRadius: '10px',
+                                                  fontWeight: '700',
+                                                  border: idx === 0 ? '1.5px solid #66bb6a' : '1.5px solid #14b8a6',
+                                                  whiteSpace: 'nowrap'
+                                                }}
+                                              >
+                                                {label}
+                                              </span>
+                                            ))
+                                          ) : (
+                                            <span
+                                              style={{
+                                                fontSize: '11px',
+                                                padding: '3px 8px',
+                                                backgroundColor: showResampleQualityCompleted ? '#ccfbf1' : '#e8f5e9',
+                                                color: showResampleQualityCompleted ? '#115e59' : '#2e7d32',
+                                                borderRadius: '3px',
+                                                fontWeight: '700',
+                                                border: showResampleQualityCompleted ? '1.5px solid #14b8a6' : '1.5px solid #66bb6a'
+                                              }}
+                                            >
+                                              ✓ Quality Completed
+                                            </span>
+                                          )}
+                                        </div>
 
                                         {canEditQuality && expandedEntryId === entry.id && (
                                           <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-start' }}>
@@ -2519,5 +2666,7 @@ const SampleEntryPage: React.FC<{
 };
 
 export default SampleEntryPage;
+
+
 
 

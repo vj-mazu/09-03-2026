@@ -46,3 +46,10 @@ diff_stat.txt
 temp_line.txt
 *.swp
 *~
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

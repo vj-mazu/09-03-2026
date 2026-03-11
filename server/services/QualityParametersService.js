@@ -33,17 +33,19 @@ class QualityParametersService {
       const sampleEntry = await SampleEntryRepository.findById(qualityData.sampleEntryId);
 
       // Transition workflow to QUALITY_CHECK (from STAFF_ENTRY) ONLY if it's currently at STAFF_ENTRY
-      // Rice samples skip quality check and go straight to cooking report
-      if (sampleEntry && sampleEntry.workflowStatus === 'STAFF_ENTRY') {
-        await WorkflowEngine.transitionTo(
-          qualityData.sampleEntryId,
-          'QUALITY_CHECK',
-          userId,
-          userRole,
-          { qualityParametersId: quality.id }
-        );
-      } else {
-        console.log(`[QUALITY] Skipping transition for ${qualityData.sampleEntryId}: current status is ${sampleEntry?.workflowStatus}`);
+      // Resample flow: allow LOT_ALLOTMENT -> QUALITY_CHECK when lotSelectionDecision=FAIL
+      if (sampleEntry) {
+        if (sampleEntry.workflowStatus === 'STAFF_ENTRY') {
+          await WorkflowEngine.transitionTo(
+            qualityData.sampleEntryId,
+            'QUALITY_CHECK',
+            userId,
+            userRole,
+            { qualityParametersId: quality.id }
+          );
+        } else {
+          console.log(`[QUALITY] Skipping transition for ${qualityData.sampleEntryId}: current status is ${sampleEntry?.workflowStatus}`);
+        }
       }
 
       return quality;
@@ -97,18 +99,20 @@ class QualityParametersService {
       );
 
       // If upgrading from 100g to full quality (is100Grams=false), transition workflow
-      if (!updates.is100Grams && userRole) {
+      if (userRole) {
         try {
           // Fetch entry to check status before transitioning
           const sampleEntry = await SampleEntryRepository.findById(updates.sampleEntryId);
-          if (sampleEntry && sampleEntry.workflowStatus === 'STAFF_ENTRY') {
-            await WorkflowEngine.transitionTo(
-              updates.sampleEntryId,
-              'QUALITY_CHECK',
-              userId,
-              userRole,
-              { qualityParametersId: id }
-            );
+          if (sampleEntry) {
+            if (!updates.is100Grams && sampleEntry.workflowStatus === 'STAFF_ENTRY') {
+              await WorkflowEngine.transitionTo(
+                updates.sampleEntryId,
+                'QUALITY_CHECK',
+                userId,
+                userRole,
+                { qualityParametersId: id }
+              );
+            }
           }
         } catch (wfErr) {
           // Workflow transition may fail if already at QUALITY_CHECK or beyond — that's ok

@@ -17,14 +17,14 @@ const WORKFLOW_TRANSITIONS = [
   {
     fromStatus: 'STAFF_ENTRY',
     toStatus: 'QUALITY_CHECK',
-    allowedRoles: ['staff', 'quality_supervisor', 'admin', 'manager', 'owner'],
+    allowedRoles: ['staff', 'quality_supervisor', 'physical_supervisor', 'admin', 'manager', 'owner'],
     requiredData: []
   },
   // Quality Supervisor adds quality params and moves to next step
   {
     fromStatus: 'STAFF_ENTRY',
     toStatus: 'QUALITY_CHECK',
-    allowedRoles: ['quality_supervisor', 'admin', 'manager', 'owner'],
+    allowedRoles: ['quality_supervisor', 'physical_supervisor', 'admin', 'manager', 'owner'],
     requiredData: ['qualityParameters']
   },
   {
@@ -49,6 +49,13 @@ const WORKFLOW_TRANSITIONS = [
     fromStatus: 'QUALITY_CHECK',
     toStatus: 'FAILED',
     allowedRoles: ['admin', 'manager'],
+    requiredData: []
+  },
+  // Re-sample: Allow self-transition QUALITY_CHECK → QUALITY_CHECK when FAIL decision re-enters
+  {
+    fromStatus: 'QUALITY_CHECK',
+    toStatus: 'QUALITY_CHECK',
+    allowedRoles: ['admin', 'manager', 'staff', 'quality_supervisor', 'physical_supervisor'],
     requiredData: []
   },
   {
@@ -122,6 +129,18 @@ const WORKFLOW_TRANSITIONS = [
     toStatus: 'PHYSICAL_INSPECTION',
     allowedRoles: ['physical_supervisor', 'manager', 'admin'],
     requiredData: ['lotAllotment']
+  },
+  {
+    fromStatus: 'LOT_ALLOTMENT',
+    toStatus: 'QUALITY_CHECK',
+    allowedRoles: ['staff', 'quality_supervisor', 'physical_supervisor', 'admin', 'manager'],
+    requiredData: []
+  },
+  {
+    fromStatus: 'LOT_ALLOTMENT',
+    toStatus: 'FAILED',
+    allowedRoles: ['admin', 'manager', 'owner'],
+    requiredData: []
   },
   {
     fromStatus: 'PHYSICAL_INSPECTION',

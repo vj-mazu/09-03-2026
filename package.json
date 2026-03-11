@@ -20,6 +20,26 @@
   "author": "Mother India Mill",
   "license": "MIT",
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^25.4.0",
     "concurrently": "^8.2.2"
-  }
+  },
+  "main": "index.js",
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "date-fns": "^2.30.0",
+    "lodash": "^4.17.21",
+    "rxjs": "^7.8.2",
+    "sharp": "^0.33.5",
+    "yargs": "^17.7.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vj-mazu/rice_mill_complete_software.git"
+  },
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/vj-mazu/rice_mill_complete_software/issues"
+  },
+  "homepage": "https://github.com/vj-mazu/rice_mill_complete_software#readme"
 }

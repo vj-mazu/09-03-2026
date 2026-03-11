@@ -1,4 +1,5 @@
 const CookingReportRepository = require('../repositories/CookingReportRepository');
+const SampleEntryRepository = require('../repositories/SampleEntryRepository');
 const AuditService = require('./AuditService');
 const WorkflowEngine = require('./WorkflowEngine');
 
@@ -45,9 +46,7 @@ class CookingReportService {
       if (existing) {
         console.log(`[COOKING] Updating existing cooking report for sample entry: ${reportData.sampleEntryId}`);
         const updates = { ...reportData };
-        if (!updates.status && existing.status) {
-          delete updates.status;
-        } else if (!updates.status) {
+        if (!updates.status) {
           updates.status = null;
         }
 
@@ -70,10 +69,26 @@ class CookingReportService {
       // Transition workflow based on status
       const currentStatus = reportData.status || null;
       if (currentStatus) {
-        let nextStatus;
+        const sampleEntry = await SampleEntryRepository.findById(reportData.sampleEntryId);
+        const isResampleFlow = sampleEntry?.lotSelectionDecision === 'FAIL';
+        let nextStatus = null;
+
         if (currentStatus === 'PASS' || currentStatus === 'MEDIUM') {
-          // PASS and MEDIUM both move to LOT_SELECTION (Final Pass Lots)
-          nextStatus = 'LOT_SELECTION';
+          if (isResampleFlow) {
+            // Re-sample should not go back to pending sample selection.
+            if (sampleEntry?.workflowStatus === 'LOT_ALLOTMENT') {
+              nextStatus = null;
+            } else if (sampleEntry?.workflowStatus === 'STAFF_ENTRY') {
+              // Quality may not be saved yet, keep this entry in quality stage.
+              nextStatus = 'QUALITY_CHECK';
+            } else {
+              // Re-sample quality+cooking approved: move directly to final stage.
+              nextStatus = 'FINAL_REPORT';
+            }
+          } else {
+            // Normal flow.
+            nextStatus = 'LOT_SELECTION';
+          }
         } else if (currentStatus === 'FAIL') {
           nextStatus = 'FAILED';
         } else {
@@ -81,13 +96,41 @@ class CookingReportService {
           return report;
         }
 
-        await WorkflowEngine.transitionTo(
-          reportData.sampleEntryId,
-          nextStatus,
-          userId,
-          userRole,
-          { cookingReportId: report.id, cookingStatus: currentStatus }
-        );
+        if (nextStatus) {
+          await WorkflowEngine.transitionTo(
+            reportData.sampleEntryId,
+            nextStatus,
+            userId,
+            userRole,
+            { cookingReportId: report.id, cookingStatus: currentStatus, resample: isResampleFlow }
+          );
+        }
+
+        // Auto-skip Final Pass Lots for resample entries that already have offering/final price
+        // Scenario 2: Final + Resample — price already decided, skip directly to Loading Lots
+        if (nextStatus === 'LOT_SELECTION' || nextStatus === 'FINAL_REPORT') {
+          try {
+            const SampleEntryOffering = require('../models/SampleEntryOffering');
+            const offering = await SampleEntryOffering.findOne({
+              where: { sampleEntryId: reportData.sampleEntryId },
+              attributes: ['id', 'finalPrice', 'isFinalized', 'offerBaseRateValue'],
+              raw: true
+            });
+            // If offering exists with a finalized price, this is Scenario 2 — auto-skip to LOT_ALLOTMENT
+            if (offering && (offering.finalPrice || offering.isFinalized)) {
+              console.log(`[COOKING] Auto-skipping Final Pass Lots for resample entry ${reportData.sampleEntryId} — offering already exists`);
+              await WorkflowEngine.transitionTo(
+                reportData.sampleEntryId,
+                'LOT_ALLOTMENT',
+                userId,
+                userRole,
+                { autoSkipFinalPassLots: true, resample: true }
+              );
+            }
+          } catch (skipErr) {
+            console.log(`[COOKING] Auto-skip note: ${skipErr.message}`);
+          }
+        }
       }
 
       return report;

@@ -6,7 +6,6 @@ import LoadingLots from './LoadingLots';
 import CompletedLots from './CompletedLots';
 import AdminSampleBook2 from './AdminSampleBook2';
 import SampleEntryPage from './SampleEntry';
-
 type TabKey = 'paddy-samples' | 'pending-lots' | 'cooking-report' | 'lots-passed' | 'loading-lots' | 'completed-lots' | 'sample-book-2';
 
 interface TabConfig {

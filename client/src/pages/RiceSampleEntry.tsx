@@ -817,7 +817,12 @@ const RiceSampleEntry: React.FC<{ defaultTab?: 'RICE_SAMPLE' | 'RICE_BOOK' }> = 
                           </tr>
                         </thead>
                         <tbody>
-                          {[...brokerEntries].reverse().map((entry, index) => {
+                          {[...brokerEntries].sort((a, b) => {
+                            const serialA = Number.isFinite(Number(a.serialNo)) ? Number(a.serialNo) : null;
+                            const serialB = Number.isFinite(Number(b.serialNo)) ? Number(b.serialNo) : null;
+                            if (serialA !== null && serialB !== null && serialA !== serialB) return serialA - serialB;
+                            return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+                          }).map((entry, index) => {
                             slNo++;
                             const qp = (entry as any).qualityParameters;
                             const hasQuality = qp && qp.moisture != null && ((qp.cutting1 && Number(qp.cutting1) !== 0) || (qp.bend1 && Number(qp.bend1) !== 0) || (qp.mix && Number(qp.mix) !== 0));

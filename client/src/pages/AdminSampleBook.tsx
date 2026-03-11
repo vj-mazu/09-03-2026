@@ -204,8 +204,10 @@ const AdminSampleBook: React.FC = () => {
                                 (offer.brokerageEnabled === false && !parseFloat(offer.brokerage)) ||
                                 (offer.lfEnabled === false && !parseFloat(offer.lf))
                             );
+                            const isResampleActive = e.lotSelectionDecision === 'FAIL' && e.workflowStatus !== 'FAILED';
+                            const isHardFail = e.workflowStatus === 'FAILED' || (cr && String(cr.status).toUpperCase() === 'FAIL');
                             return (
-                                <tr key={e.id} style={{ background: e.workflowStatus === 'FAILED' || e.lotSelectionDecision === 'FAIL' || e.lotSelectionDecision === 'SOLDOUT' ? '#fff0f0' : e.workflowStatus === 'COMPLETED' ? '#f0fff0' : e.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : e.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff', borderLeft: e.workflowStatus === 'FAILED' || e.lotSelectionDecision === 'FAIL' ? '4px solid #e74c3c' : e.workflowStatus === 'COMPLETED' ? '4px solid #27ae60' : 'none' }}>
+                                <tr key={e.id} style={{ background: e.lotSelectionDecision === 'SOLDOUT' ? '#fff0f0' : isHardFail ? '#fff0f0' : isResampleActive ? '#fff3e0' : e.workflowStatus === 'COMPLETED' ? '#f0fff0' : e.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : e.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff', borderLeft: isHardFail ? '4px solid #e74c3c' : isResampleActive ? '4px solid #f59e0b' : e.workflowStatus === 'COMPLETED' ? '4px solid #27ae60' : 'none' }}>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' }}>{(e as any).serialNo || (i + 1 + (page - 1) * pageSize)}</td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '700', fontSize: '11px', whiteSpace: 'nowrap' }}>{e.bags || '0'}</td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '11px', whiteSpace: 'nowrap' }}>{Number(e.packaging) === 0 ? 'Loose' : `${e.packaging || '75'} kg`}</td>
@@ -258,7 +260,7 @@ const AdminSampleBook: React.FC = () => {
                                         {e.lotSelectionDecision === 'SOLDOUT' ? (
                                             <span style={{ background: '#800000', color: 'white', padding: '1px 6px', borderRadius: '10px', fontSize: '10px', fontWeight: '800' }}>SOLD OUT</span>
                                         ) : hasCooking ? (
-                                            cr.status === 'FAIL' || e.lotSelectionDecision === 'FAIL' ? (
+                                            cr.status === 'FAIL' || e.workflowStatus === 'FAILED' ? (
                                                 <span style={{ background: '#ffcdd2', color: '#b71c1c', padding: '1px 6px', borderRadius: '10px', fontSize: '10px', fontWeight: '700' }}>✕ Failed</span>
                                             ) : (
                                                 <span style={{ background: '#e8f5e9', color: '#2e7d32', padding: '1px 6px', borderRadius: '10px', fontSize: '10px', fontWeight: '700' }}>✓ Passed</span>

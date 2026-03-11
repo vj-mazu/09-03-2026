@@ -54,6 +54,37 @@ const getTimeValue = (value?: string | null) => {
   return Number.isFinite(time) ? time : 0;
 };
 
+const splitHistoryByResampleStart = (entry: SampleEntry, history: any[]) => {
+  const startAt = getTimeValue(entry.lotSelectionAt);
+  if (!startAt || !Array.isArray(history) || history.length === 0) {
+    return { before: history || [], after: history || [], hasSplit: false };
+  }
+
+  const before = history.filter((item: any) => getTimeValue(item?.date) < startAt);
+  const after = history.filter((item: any) => getTimeValue(item?.date) >= startAt);
+  return { before, after, hasSplit: true };
+};
+
+const getSamplingLabel = (attemptNo: number) => {
+  if (attemptNo <= 1) return 'First Sampling';
+  return 'Second Sampling';
+};
+
+const isResolvedResampleEntry = (entry: SampleEntry) => {
+  if (entry.lotSelectionDecision !== 'FAIL') return false;
+  const history = Array.isArray(entry.cookingReport?.history) ? entry.cookingReport?.history || [] : [];
+  const statusEntries = history.filter((item: any) => !!item?.status);
+  if (statusEntries.length === 0 && !entry.cookingReport?.status) return false;
+
+  const { after, hasSplit } = splitHistoryByResampleStart(entry, history);
+  const cycleStatuses = (hasSplit ? after : history).filter((item: any) => !!item?.status);
+  if (hasSplit && cycleStatuses.length === 0) return false;
+  if (!hasSplit && statusEntries.length < 2) return false;
+  const latest = (cycleStatuses.length > 0 ? cycleStatuses[cycleStatuses.length - 1] : statusEntries[statusEntries.length - 1]) || null;
+  const key = String(latest?.status || entry.cookingReport?.status || '').toUpperCase();
+  return ['PASS', 'MEDIUM', 'FAIL'].includes(key);
+};
+
 interface CookingReportProps {
   entryType?: string;
   excludeEntryType?: string;
@@ -84,7 +115,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
   const [historyModal, setHistoryModal] = useState<{ visible: boolean; title: string; content: React.ReactNode }>({ visible: false, title: '', content: null });
 
   // --- NEW RICE FEATURE STATES ---
-  const [activeTab, setActiveTab] = useState<'PADDY_COOKING_REPORT' | 'RICE_COOKING_REPORT'>(
+  const [activeTab, setActiveTab] = useState<'PADDY_COOKING_REPORT' | 'RICE_COOKING_REPORT' | 'RESAMPLE_COOKING_REPORT'>(
     entryType === 'RICE_SAMPLE' ? 'RICE_COOKING_REPORT' : 'PADDY_COOKING_REPORT'
   );
 
@@ -101,6 +132,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
   const [approvalType, setApprovalType] = useState<'owner' | 'manager' | 'admin' | 'manual'>('owner');
   const [manualApprovalName, setManualApprovalName] = useState('');
   const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
+  const isCookingStaffRole = user?.role === 'staff' || user?.role === 'quality_supervisor';
 
   const resetReportFormState = () => {
     setCookingData(createEmptyCookingData());
@@ -129,11 +161,11 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const PAGE_SIZE = 100;
-  const canTakeAction = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'staff';
+  const canTakeAction = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'staff' || user?.role === 'quality_supervisor';
 
   useEffect(() => {
     loadEntries();
-  }, [page]);
+  }, [page, activeTab]);
 
   useEffect(() => {
     setPage(1);
@@ -156,16 +188,13 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
   const loadSupervisors = async () => {
     try {
       const token = localStorage.getItem('token');
-      // Fetch staff (Paddy Supervisors) instead of physical_supervisor
-      const response = await axios.get(`${API_URL}/admin/users`, {
-        params: { role: 'staff' },
+      // All paddy supervisors are allowed (mill + location staff).
+      const response = await axios.get(`${API_URL}/sample-entries/paddy-supervisors`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = response.data as any;
       const users = Array.isArray(data) ? data : (data.users || []);
-      // Client-side filter to ensure only Staff (Paddy Supervisors) are shown in the dropdown,
-      // as the backend doesn't filter by the 'role' query param.
-      setSupervisors(users.filter((u: any) => u.isActive !== false && u.role === 'staff'));
+      setSupervisors(users.filter((u: any) => u && u.username));
     } catch (error) {
       console.error('Error loading supervisors:', error);
     }
@@ -176,7 +205,8 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
       setLoading(true);
       const token = localStorage.getItem('token');
       // Always show entries that have finished cooking (or await final approval)
-      const params: any = { status: 'COOKING_BOOK', page, pageSize: PAGE_SIZE };
+      const status = activeTab === 'RESAMPLE_COOKING_REPORT' ? 'RESAMPLE_COOKING_BOOK' : 'COOKING_BOOK';
+      const params: any = { status, page, pageSize: PAGE_SIZE };
 
       const dFrom = fFrom !== undefined ? fFrom : filterDateFrom;
       const dTo = fTo !== undefined ? fTo : filterDateTo;
@@ -249,7 +279,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
 
     // Determine cookingApprovedBy value (Admin/Manager overrides, staff preserves existing)
     let finalCookingApprovedBy = selectedEntry.cookingReport?.cookingApprovedBy || '';
-    if (user?.role !== 'staff') {
+    if (!isCookingStaffRole) {
       if (approvalType === 'owner') finalCookingApprovedBy = 'Harish';
       else if (approvalType === 'manager') finalCookingApprovedBy = 'Guru';
       else if (approvalType === 'admin') finalCookingApprovedBy = 'MK Subbu';
@@ -259,7 +289,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
 
     // Determine status (Staff cannot set status, and submitting a Recheck should reset it to Pending)
     let finalStatus = cookingData.status;
-    if (user?.role === 'staff') {
+    if (isCookingStaffRole) {
       finalStatus = ''; // Staff submitting always resets the admin's status decision
     }
 
@@ -273,20 +303,6 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
       );
 
       showNotification('Cooking report added successfully', 'success');
-
-      if (cookingData.status === 'MEDIUM') {
-        try {
-          await axios.post(
-            `${API_URL}/sample-entries/${selectedEntry.id}/transition`,
-            { toStatus: 'LOT_SELECTION' },
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
-          showNotification('✅ Medium selected - Lot moved to Final Pass Lots!', 'success');
-        } catch (transitionErr) {
-          console.error('Error transitioning lot:', transitionErr);
-        }
-      }
-
       closeReportModal();
       loadEntries();
     } catch (error: any) {
@@ -422,55 +438,48 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
   };
 
   const getStatusBadge = (entry: SampleEntry) => {
-    const needsFreshCookingAttempt =
-      entry.lotSelectionDecision === 'PASS_WITH_COOKING'
-      && getTimeValue(entry.lotSelectionAt) > getTimeValue(entry.cookingReport?.updatedAt);
-    const resampleAttempts = Math.max(0, Number(entry.qualityReportAttempts || 0));
-    const resampleBadge = resampleAttempts > 1 ? (
-      <span style={{ color: '#7c2d12', backgroundColor: '#ffedd5', border: '1px solid #fdba74', fontWeight: '700', padding: '2px 6px', borderRadius: '10px', fontSize: '10px' }}>
-        Re-sample {resampleAttempts}
-      </span>
-    ) : null;
-
-    if (needsFreshCookingAttempt) {
-      return (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-          {resampleBadge}
-          <span style={{ color: '#e67e22', fontWeight: '700' }}>Pending New Cooking</span>
-        </div>
-      );
-    }
-    if (!entry.cookingReport) {
-      return <span style={{ color: '#e67e22', fontWeight: '700' }}>⏳ Pending</span>;
-    }
-    const cr = entry.cookingReport;
-    const statusMap: Record<string, { color: string; bg: string; label: string }> = {
-      PASS: { color: '#27ae60', bg: '#e8f5e9', label: '✓ Pass' },
-      FAIL: { color: '#e74c3c', bg: '#fdecea', label: '✕ Fail' },
-      RECHECK: { color: '#e67e22', bg: '#fff3e0', label: '↻ Recheck' },
-      MEDIUM: { color: '#f39c12', bg: '#ffe0b2', label: '◎ Medium' },
-      SOLDOUT: { color: '#ffffff', bg: '#800000', label: 'SOLD OUT' }
+    const normalizeStatus = (value?: string | null) => String(value || '').toUpperCase();
+    const toStatusInfo = (statusKey?: string | null) => {
+      const key = normalizeStatus(statusKey);
+      if (key === 'PASS') return { color: '#27ae60', bg: '#e8f5e9', label: 'Pass' };
+      if (key === 'MEDIUM') return { color: '#f39c12', bg: '#ffe0b2', label: 'Medium' };
+      if (key === 'FAIL') return { color: '#e74c3c', bg: '#fdecea', label: 'Fail' };
+      if (key === 'RECHECK') return { color: '#e67e22', bg: '#fff3e0', label: 'Recheck' };
+      return { color: '#999', bg: '#f5f5f5', label: 'Pending' };
     };
 
-    const history = cr.history || [];
-    const lastHistory = history.length > 0 ? history[history.length - 1] : null;
-    const isWaitingForAdmin = lastHistory && !lastHistory.status && lastHistory.cookingDoneBy;
+    const cr = entry.cookingReport;
+    const history = Array.isArray(cr?.history) ? cr.history : [];
+    const staffHistory = history.filter((item: any) => !!item?.cookingDoneBy && !item?.status);
+    const adminHistory = history.filter((item: any) => !!item?.status);
+    const isWaitingForAdmin = staffHistory.length > adminHistory.length;
+    const isResampleCase = activeTab === 'RESAMPLE_COOKING_REPORT' || entry.lotSelectionDecision === 'FAIL';
+    const { before: historyBeforeResample, after: historyAfterResample, hasSplit: hasResampleSplit } =
+      splitHistoryByResampleStart(entry, history);
 
-    let info = cr.status ? statusMap[cr.status] : null;
+    const firstAdminStatus = normalizeStatus(adminHistory[0]?.status || null);
+    const lastAdminStatus = normalizeStatus(adminHistory[adminHistory.length - 1]?.status || cr?.status || null);
 
-    if (isWaitingForAdmin && user?.role === 'staff') {
-      info = { color: '#2980b9', bg: '#e3f2fd', label: '⏳ Admin want to approve' };
-    } else if (!info) {
-      if (cr.cookingDoneBy) {
-        info = user?.role === 'staff' ? { color: '#2980b9', bg: '#e3f2fd', label: '⏳ Admin want to approve' } : { color: '#999', bg: '#f5f5f5', label: 'Pending' };
-      } else {
-        info = { color: '#999', bg: '#f5f5f5', label: 'Pending' };
+    const needsFreshCookingAttempt =
+      entry.lotSelectionDecision === 'PASS_WITH_COOKING'
+      && getTimeValue(entry.lotSelectionAt) > getTimeValue(cr?.updatedAt);
+
+    if (!isResampleCase) {
+      if (needsFreshCookingAttempt) {
+        return <span style={{ color: '#e67e22', fontWeight: '700' }}>Pending</span>;
       }
-    }
+      if (!cr) {
+        return <span style={{ color: '#e67e22', fontWeight: '700' }}>Pending</span>;
+      }
 
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-        {resampleBadge}
+      let info = toStatusInfo(lastAdminStatus);
+      if (isWaitingForAdmin) {
+        info = { color: '#2980b9', bg: '#e3f2fd', label: 'Admin want to approve' };
+      } else if (!lastAdminStatus && staffHistory.length > 0) {
+        info = { color: '#2980b9', bg: '#e3f2fd', label: 'Admin want to approve' };
+      }
+
+      return (
         <span
           onClick={() => handleOpenHistory(entry, 'all')}
           style={{
@@ -486,8 +495,147 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
         >
           {info.label}
         </span>
+      );
+    }
+
+    const pendingApprovalInfo = { color: '#2980b9', bg: '#e3f2fd', label: 'Admin want to approve' };
+
+    // Re-sample should keep first sampling from pre-resample cycle and second sampling from current resample cycle.
+    const beforeAdminHistory = historyBeforeResample.filter((item: any) => !!item?.status);
+    const afterStaffHistory = historyAfterResample.filter((item: any) => !!item?.cookingDoneBy && !item?.status);
+    const afterAdminHistory = historyAfterResample.filter((item: any) => !!item?.status);
+    const lastAfterStaff = afterStaffHistory[afterStaffHistory.length - 1];
+    const lastAfterAdmin = afterAdminHistory[afterAdminHistory.length - 1];
+    const lastAfterStaffAt = getTimeValue(lastAfterStaff?.date);
+    const lastAfterAdminAt = getTimeValue(lastAfterAdmin?.date);
+    const waitingAdminAfterResample = !!lastAfterStaff && (!lastAfterAdmin || lastAfterStaffAt > lastAfterAdminAt);
+    const baselineFirstStatus = normalizeStatus(
+      beforeAdminHistory[beforeAdminHistory.length - 1]?.status
+      || adminHistory[adminHistory.length - 1]?.status
+      || cr?.status
+      || null
+    );
+
+    const firstInfo = baselineFirstStatus
+      ? toStatusInfo(baselineFirstStatus)
+      : (isWaitingForAdmin && staffHistory.length > 0 ? pendingApprovalInfo : { color: '#e67e22', bg: '#fff3e0', label: 'Pending' });
+
+    // Re-sample always shows two lines (1st + 2nd) for clarity.
+    const showSecondLine = true;
+    const latestSecondStatus = normalizeStatus(lastAfterAdmin?.status || null);
+    let secondInfo = { color: '#e67e22', bg: '#fff3e0', label: 'Pending' };
+
+    if (hasResampleSplit) {
+      if (waitingAdminAfterResample) {
+        secondInfo = pendingApprovalInfo;
+      } else if (latestSecondStatus) {
+        secondInfo = toStatusInfo(latestSecondStatus);
+      }
+    } else {
+      // Legacy fallback for old records without reliable split timestamp.
+      if (adminHistory.length >= 2 && normalizeStatus(adminHistory[adminHistory.length - 1]?.status || null)) {
+        secondInfo = toStatusInfo(normalizeStatus(adminHistory[adminHistory.length - 1]?.status || null));
+      } else if (staffHistory.length >= 2 && isWaitingForAdmin) {
+        secondInfo = pendingApprovalInfo;
+      } else if (isWaitingForAdmin && staffHistory.length > 1) {
+        secondInfo = pendingApprovalInfo;
+      }
+    }
+
+    const isSecondPendingState = ['PENDING', 'PENDING APPROVAL', 'ADMIN WANT TO APPROVE'].includes(
+      String(secondInfo.label || '').toUpperCase()
+    );
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', width: '100%', minWidth: 0 }}>
+        <div
+          onClick={() => handleOpenHistory(entry, 'all')}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '10px', cursor: 'pointer', flexWrap: 'wrap', maxWidth: '100%' }}
+          title="Click to see full history"
+        >
+          <span style={{ fontWeight: 700, color: '#555' }}>1st:</span>
+          <span style={{ color: firstInfo.color, backgroundColor: firstInfo.bg, fontWeight: 700, padding: '1px 6px', borderRadius: '4px', fontSize: '10px' }}>
+            {firstInfo.label}
+          </span>
+        </div>
+        <div
+          onClick={() => handleOpenHistory(entry, 'all')}
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', fontSize: '10px', cursor: 'pointer', maxWidth: '100%' }}
+          title="Click to see full history"
+        >
+          <span style={{ color: '#7c2d12', backgroundColor: '#ffedd5', border: '1px solid #fdba74', fontWeight: '700', padding: '2px 6px', borderRadius: '10px', fontSize: '10px', lineHeight: 1.1, textAlign: 'center' }}>
+            Re-sample
+          </span>
+          {isSecondPendingState && (
+            <span style={{ color: secondInfo.color, backgroundColor: secondInfo.bg, fontWeight: 700, padding: '1px 6px', borderRadius: '4px', fontSize: '10px', lineHeight: 1.1, textAlign: 'center' }}>
+              {secondInfo.label}
+            </span>
+          )}
+        </div>
+        {showSecondLine && !isSecondPendingState && (
+          <div
+            onClick={() => handleOpenHistory(entry, 'all')}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', fontSize: '10px', cursor: 'pointer', flexWrap: 'wrap', maxWidth: '100%' }}
+            title="Click to see full history"
+          >
+            <span style={{ fontWeight: 700, color: '#555' }}>2nd:</span>
+            <span style={{ color: secondInfo.color, backgroundColor: secondInfo.bg, fontWeight: 700, padding: '1px 6px', borderRadius: '4px', fontSize: '10px' }}>
+              {secondInfo.label}
+            </span>
+          </div>
+        )}
       </div>
     );
+  };
+
+  const canStaffAddCookingForEntry = (entry: SampleEntry) => {
+    const normalizeStatus = (value?: string | null) => String(value || '').toUpperCase();
+    const cr = entry.cookingReport;
+    const history = Array.isArray(cr?.history) ? cr.history : [];
+    const staffHistory = history.filter((item: any) => !!item?.cookingDoneBy && !item?.status);
+    const adminHistory = history.filter((item: any) => !!item?.status);
+    const waitingAdmin = staffHistory.length > adminHistory.length;
+    const latestAdminStatus = normalizeStatus(adminHistory[adminHistory.length - 1]?.status || cr?.status || null);
+    const isResampleCase = entry.lotSelectionDecision === 'FAIL' || activeTab === 'RESAMPLE_COOKING_REPORT';
+    const needsFreshCookingAttempt =
+      entry.lotSelectionDecision === 'PASS_WITH_COOKING'
+      && getTimeValue(entry.lotSelectionAt) > getTimeValue(cr?.updatedAt);
+
+    if (isResampleCase) {
+      const assignedUser = String(entry.sampleCollectedBy || '').trim().toLowerCase();
+      if (!assignedUser) return { canAdd: false, reason: 'Awaiting Assign' };
+    }
+
+    // Normal flow: one staff entry, then wait for admin.
+    if (!isResampleCase) {
+      if (waitingAdmin) return { canAdd: false, reason: 'Awaiting Admin' };
+      if (needsFreshCookingAttempt || !cr || staffHistory.length === 0 || latestAdminStatus === 'RECHECK') {
+        return { canAdd: true, reason: '' };
+      }
+      return { canAdd: false, reason: 'Locked' };
+    }
+
+    // Re-sample flow: only use history from current resample cycle (after lotSelectionAt).
+    const { after: historyAfterResample, hasSplit: hasResampleSplit } = splitHistoryByResampleStart(entry, history);
+    const currentCycleHistory = hasResampleSplit ? historyAfterResample : history;
+    const currentCycleStaffHistory = currentCycleHistory.filter((item: any) => !!item?.cookingDoneBy && !item?.status);
+    const currentCycleAdminHistory = currentCycleHistory.filter((item: any) => !!item?.status);
+    const lastCurrentCycleStaff = currentCycleStaffHistory[currentCycleStaffHistory.length - 1];
+    const lastCurrentCycleAdmin = currentCycleAdminHistory[currentCycleAdminHistory.length - 1];
+    const lastCurrentCycleStaffAt = getTimeValue(lastCurrentCycleStaff?.date);
+    const lastCurrentCycleAdminAt = getTimeValue(lastCurrentCycleAdmin?.date);
+    const waitingAdminCurrentCycle = !!lastCurrentCycleStaff && (!lastCurrentCycleAdmin || lastCurrentCycleStaffAt > lastCurrentCycleAdminAt);
+    const latestCurrentCycleAdminStatus = normalizeStatus(lastCurrentCycleAdmin?.status || null);
+    const hasSecondSamplingStarted = currentCycleStaffHistory.length > 0;
+    const needsSecondSampling = !hasSecondSamplingStarted;
+    const needsRecheckRetry = latestCurrentCycleAdminStatus === 'RECHECK' && lastCurrentCycleAdminAt >= lastCurrentCycleStaffAt;
+
+    if (waitingAdminCurrentCycle) return { canAdd: false, reason: 'Admin want to approve' };
+
+    if (needsSecondSampling || needsRecheckRetry) {
+      return { canAdd: true, reason: '' };
+    }
+    return { canAdd: false, reason: 'Locked' };
   };
 
   const renderSampleReportByWithDate = (entry: any) => {
@@ -592,14 +740,18 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
   // Filter entries to display
   // We want to display all fetched entries since we need both pending and completed ones
   const displayEntries = useMemo(() => {
-    return entries;
-  }, [entries]);
+    if (activeTab !== 'RESAMPLE_COOKING_REPORT') return entries;
+    return entries.filter((entry) => !isResolvedResampleEntry(entry));
+  }, [entries, activeTab]);
 
   const displayGrouped = useMemo(() => {
     const sorted = [...displayEntries].sort((a, b) => {
       const dateA = new Date(a.entryDate).getTime();
       const dateB = new Date(b.entryDate).getTime();
       if (dateA !== dateB) return dateB - dateA;
+      const serialA = Number.isFinite(Number(a.serialNo)) ? Number(a.serialNo) : null;
+      const serialB = Number.isFinite(Number(b.serialNo)) ? Number(b.serialNo) : null;
+      if (serialA !== null && serialB !== null && serialA !== serialB) return serialA - serialB;
       return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     });
     const grouped: Record<string, Record<string, typeof sorted>> = {};
@@ -719,6 +871,19 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
             📖 PADDY SAMPLE COOKING
           </button>
         )}
+        {(!entryType || entryType !== 'RICE_SAMPLE') && (
+          <button
+            onClick={() => setActiveTab('RESAMPLE_COOKING_REPORT')}
+            style={{
+              padding: '8px 20px', fontSize: '13px', fontWeight: '700', border: 'none', borderRadius: '6px 6px 0 0', cursor: 'pointer', whiteSpace: 'nowrap',
+              backgroundColor: activeTab === 'RESAMPLE_COOKING_REPORT' ? '#c62828' : '#e0e0e0',
+              color: activeTab === 'RESAMPLE_COOKING_REPORT' ? 'white' : '#555',
+              boxShadow: activeTab === 'RESAMPLE_COOKING_REPORT' ? '0 -2px 5px rgba(0,0,0,0.1)' : 'none',
+            }}
+          >
+            🔄 RESAMPLE COOKING
+          </button>
+        )}
         {(!excludeEntryType || excludeEntryType !== 'RICE_SAMPLE') && (
           <button
             onClick={() => setActiveTab('RICE_COOKING_REPORT')}
@@ -734,7 +899,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
         )}
       </div>
 
-      {activeTab === 'PADDY_COOKING_REPORT' && (
+      {(activeTab === 'PADDY_COOKING_REPORT' || activeTab === 'RESAMPLE_COOKING_REPORT') && (
         <>
           {/* Collapsible Filter Bar */}
           <div style={{ marginBottom: '0px' }}>
@@ -819,6 +984,12 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                     {visibleBrokers.map((brokerGroup, vIdx) => {
                       brokerSeq++;
                       const { name: brokerName, entries: paddyEntries } = brokerGroup;
+                      const orderedEntries = [...paddyEntries].sort((a, b) => {
+                        const serialA = Number.isFinite(Number(a.serialNo)) ? Number(a.serialNo) : null;
+                        const serialB = Number.isFinite(Number(b.serialNo)) ? Number(b.serialNo) : null;
+                        if (serialA !== null && serialB !== null && serialA !== serialB) return serialA - serialB;
+                        return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+                      });
                       return (
                         <div key={brokerName} style={{ marginBottom: '0px' }}>
                           {/* Date bar — only first visible broker */}
@@ -865,7 +1036,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                                 </tr>
                               </thead>
                               <tbody>
-                                {paddyEntries.map((entry, idx) => {
+                                {orderedEntries.map((entry, idx) => {
                                   const slNo = entry.serialNo || (idx + 1);
 
                                   // Determine Quality Info (Pass)
@@ -886,7 +1057,23 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                                       )}
                                       <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '13px' }}>{entry.bags?.toLocaleString('en-IN') || '0'}</td>
                                       <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', textAlign: 'center' }}>{entry.packaging || '-'}</td>
-                                      <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#1565c0' }}>{toTitleCase(entry.partyName)}{entry.entryType === 'DIRECT_LOADED_VEHICLE' && entry.lorryNumber ? <div style={{ fontSize: '13px', color: '#1565c0', fontWeight: '600' }}>{entry.lorryNumber.toUpperCase()}</div> : ''}</td>
+                                      <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#1565c0' }}>
+                                        {(() => {
+                                          const party = (entry.partyName || '').trim();
+                                          const lorry = entry.lorryNumber ? entry.lorryNumber.toUpperCase() : '';
+                                          if (party) {
+                                            return (
+                                              <>
+                                                {toTitleCase(party)}
+                                                {entry.entryType === 'DIRECT_LOADED_VEHICLE' && lorry ? (
+                                                  <div style={{ fontSize: '13px', color: '#1565c0', fontWeight: '600' }}>{lorry}</div>
+                                                ) : null}
+                                              </>
+                                            );
+                                          }
+                                          return lorry || '-';
+                                        })()}
+                                      </td>
                                       <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '13px' }}>{toTitleCase(entry.location) || '-'}</td>
                                       <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '13px' }}>{toTitleCase(entry.variety)}</td>
                                       <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '12px', fontWeight: '700' }}>{objQuality}</td>
@@ -907,16 +1094,8 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                                       {canTakeAction && (
                                         <td className="action-col" style={{ border: '1px solid #000', padding: '4px 6px', textAlign: 'center' }}>
                                           {(() => {
-                                            const cr = entry.cookingReport;
-                                            const h = cr?.history || [];
-                                            const lastH = h.length > 0 ? h[h.length - 1] : null;
-                                            const waitingAdmin = lastH && !lastH.status && lastH.cookingDoneBy;
-                                            const needsFreshCookingAttempt =
-                                              entry.lotSelectionDecision === 'PASS_WITH_COOKING'
-                                              && getTimeValue(entry.lotSelectionAt) > getTimeValue(cr?.updatedAt);
-                                            const waitingStaff = needsFreshCookingAttempt || !cr || (cr.status === 'RECHECK' && !waitingAdmin) || (!cr.cookingDoneBy && !waitingAdmin);
-
-                                            if (user?.role !== 'staff' || waitingStaff) {
+                                            const actionState = canStaffAddCookingForEntry(entry);
+                                            if (!isCookingStaffRole || actionState.canAdd) {
                                               return (
                                                 <button
                                                   onClick={() => handleOpenModal(entry)}
@@ -926,11 +1105,11 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                                                     borderRadius: '10px', cursor: 'pointer', fontWeight: '600'
                                                   }}
                                                 >
-                                                  {user?.role === 'staff' ? 'Add Cooking Done By' : 'Add Report'}
+                                                  {isCookingStaffRole ? 'Add Cooking Done By' : 'Add Report'}
                                                 </button>
                                               );
                                             } else {
-                                              return <span style={{ fontSize: '11px', color: '#999', fontStyle: 'italic' }}>Locked</span>;
+                                              return <span style={{ fontSize: '11px', color: '#999', fontStyle: 'italic' }}>{actionState.reason || 'Locked'}</span>;
                                             }
                                           })()}
                                         </td>
@@ -978,6 +1157,12 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                     {visibleBrokers.map((brokerGroup, vIdx) => {
                       brokerSeq++;
                       const { name: brokerName, entries: riceEntries } = brokerGroup;
+                      const orderedEntries = [...riceEntries].sort((a, b) => {
+                        const serialA = Number.isFinite(Number(a.serialNo)) ? Number(a.serialNo) : null;
+                        const serialB = Number.isFinite(Number(b.serialNo)) ? Number(b.serialNo) : null;
+                        if (serialA !== null && serialB !== null && serialA !== serialB) return serialA - serialB;
+                        return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+                      });
                       return (
                         <div key={brokerName} style={{ marginBottom: '0px' }}>
                           {/* Date bar — only first visible broker */}
@@ -1023,7 +1208,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                                 </tr>
                               </thead>
                               <tbody>
-                                {riceEntries.map((entry, idx) => {
+                                {orderedEntries.map((entry, idx) => {
                                   const slNo = entry.serialNo || (idx + 1);
                                   return (
                                     <tr key={entry.id}>
@@ -1036,7 +1221,14 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                                         if (pkg.toLowerCase().includes('tons')) return pkg;
                                         return `${pkg} kg`;
                                       })()}</td>
-                                      <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#1565c0' }}>{toTitleCase(entry.partyName)}</td>
+                                      <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#1565c0' }}>
+                                        {(() => {
+                                          const party = (entry.partyName || '').trim();
+                                          const lorry = entry.lorryNumber ? entry.lorryNumber.toUpperCase() : '';
+                                          if (party) return toTitleCase(party);
+                                          return lorry || '-';
+                                        })()}
+                                      </td>
                                       <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '13px' }}>{toTitleCase(entry.location) || '-'}</td>
                                       <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'left', fontSize: '13px' }}>{toTitleCase(entry.variety)}</td>
                                       <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontSize: '12px', fontWeight: '600' }}>
@@ -1055,16 +1247,8 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                                       {canTakeAction && (
                                         <td style={{ border: '1px solid #000', padding: '4px 6px', textAlign: 'center' }}>
                                           {(() => {
-                                            const cr = entry.cookingReport;
-                                            const h = cr?.history || [];
-                                            const lastH = h.length > 0 ? h[h.length - 1] : null;
-                                            const waitingAdmin = lastH && !lastH.status && lastH.cookingDoneBy;
-                                            const needsFreshCookingAttempt =
-                                              entry.lotSelectionDecision === 'PASS_WITH_COOKING'
-                                              && getTimeValue(entry.lotSelectionAt) > getTimeValue(cr?.updatedAt);
-                                            const waitingStaff = needsFreshCookingAttempt || !cr || (cr.status === 'RECHECK' && !waitingAdmin) || (!cr.cookingDoneBy && !waitingAdmin);
-
-                                            if (user?.role !== 'staff' || waitingStaff) {
+                                            const actionState = canStaffAddCookingForEntry(entry);
+                                            if (!isCookingStaffRole || actionState.canAdd) {
                                               return (
                                                 <button
                                                   onClick={() => handleOpenModal(entry)}
@@ -1074,12 +1258,11 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                                                     borderRadius: '10px', cursor: 'pointer', fontWeight: '600'
                                                   }}
                                                 >
-                                                  {user?.role === 'staff' ? 'Add Cooking Done By' : 'Add Report'}
+                                                  {isCookingStaffRole ? 'Add Cooking Done By' : 'Add Report'}
                                                 </button>
                                               );
-                                            } else {
-                                              return <span style={{ fontSize: '11px', color: '#999', fontStyle: 'italic' }}>Locked</span>;
                                             }
+                                            return <span style={{ fontSize: '11px', color: '#999', fontStyle: 'italic' }}>{actionState.reason || 'Locked'}</span>;
                                           })()}
                                         </td>
                                       )}
@@ -1117,11 +1300,15 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                 padding: '16px 20px', color: 'white'
               }}>
                 <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {user?.role === 'staff' ? '🍳 Add Preparing for Cooking' : `🍳 Add ${selectedEntry.entryType === 'RICE_SAMPLE' ? 'Rice' : 'Paddy'} Cooking Report`}
+                  {isCookingStaffRole ? '🍳 Add Preparing for Cooking' : `🍳 Add ${selectedEntry.entryType === 'RICE_SAMPLE' ? 'Rice' : 'Paddy'} Cooking Report`}
                 </h3>
                 <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.4', opacity: 0.95, fontWeight: '500' }}>
                   <span style={{ fontWeight: '800' }}>Broker Name:</span> {selectedEntry.brokerName}<br />
-                  <span style={{ fontWeight: '800' }}>Party Name:</span> {toTitleCase(selectedEntry.partyName)}<br />
+                <span style={{ fontWeight: '800' }}>Party Name:</span> {(() => {
+                  const party = (selectedEntry.partyName || '').trim();
+                  const lorry = selectedEntry.lorryNumber ? selectedEntry.lorryNumber.toUpperCase() : '';
+                  return party ? toTitleCase(party) : (lorry || '-');
+                })()}<br />
                   <span style={{ fontWeight: '800' }}>Variety:</span> {selectedEntry.variety}<br />
                   <span style={{ fontWeight: '800' }}>Bags:</span> {selectedEntry.bags?.toLocaleString('en-IN')}
                 </p>
@@ -1129,7 +1316,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
 
               <div style={{ padding: '20px' }}>
 
-                {(user?.role !== 'staff' && !selectedEntry.cookingReport?.cookingDoneBy) ? (
+                {(!isCookingStaffRole && !selectedEntry.cookingReport?.cookingDoneBy) ? (
                   <div style={{ padding: '20px', textAlign: 'center', backgroundColor: '#fff3cd', border: '1px solid #ffeeba', borderRadius: '4px', color: '#856404' }}>
                     <p style={{ margin: 0, fontSize: '14px', fontWeight: '600' }}>⚠️ Action Required by Paddy Supervisor</p>
                     <p style={{ margin: '8px 0 0', fontSize: '13px' }}>The Paddy Supervisor must select "Cooking Done By" and save their details before an Admin or Manager can approve and set the Status.</p>
@@ -1143,7 +1330,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                 ) : (
                   <form onSubmit={handleSubmit}>
                     {/* Status & Date - Hidden for staff */}
-                    {user?.role !== 'staff' && (
+                    {!isCookingStaffRole && (
                       <>
                         <div style={{ marginBottom: '12px' }}>
                           <label style={{ fontWeight: '600', color: '#555', fontSize: '13px', display: 'block', marginBottom: '4px' }}>
@@ -1178,7 +1365,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                     )}
 
                     {/* Cooking Done By - STRICTLY FOR STAFF */}
-                    {user?.role === 'staff' && (
+                    {isCookingStaffRole && (
                       <div style={{ marginBottom: '12px' }}>
                         <label style={{ display: 'block', marginBottom: '4px', fontWeight: '500', color: '#555', fontSize: '13px' }}>
                           Cooking Done by*
@@ -1221,7 +1408,7 @@ const CookingReport: React.FC<CookingReportProps> = ({ entryType, excludeEntryTy
                     )}
 
                     {/* Admin and Manager Block - Cooking Approved By & Remarks */}
-                    {user?.role !== 'staff' && (
+                    {!isCookingStaffRole && (
                       <>
                         <div style={{ marginBottom: '16px' }}>
                           <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#555', fontSize: '13px' }}>

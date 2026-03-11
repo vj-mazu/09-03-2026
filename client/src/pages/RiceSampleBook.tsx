@@ -159,6 +159,9 @@ const RiceSampleBook: React.FC = () => {
             const dateA = new Date(a.entryDate).getTime();
             const dateB = new Date(b.entryDate).getTime();
             if (dateA !== dateB) return dateB - dateA; // Primary sort: Date DESC
+            const serialA = Number.isFinite(Number(a.serialNo)) ? Number(a.serialNo) : null;
+            const serialB = Number.isFinite(Number(b.serialNo)) ? Number(b.serialNo) : null;
+            if (serialA !== null && serialB !== null && serialA !== serialB) return serialA - serialB;
             return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(); // Secondary sort: CreatedAt ASC for stable Sl No
         });
         const grouped: Record<string, Record<string, typeof sorted>> = {};
@@ -323,9 +326,15 @@ const RiceSampleBook: React.FC = () => {
                         let brokerSeq = 0;
                         return (
                             <div key={dateKey} style={{ marginBottom: '20px' }}>
-                                {Object.entries(brokerGroups).sort(([a], [b]) => a.localeCompare(b)).map(([brokerName, brokerEntries], brokerIdx) => {
-                                    brokerSeq++;
-                                    return (
+                        {Object.entries(brokerGroups).sort(([a], [b]) => a.localeCompare(b)).map(([brokerName, brokerEntries], brokerIdx) => {
+                            const orderedEntries = [...brokerEntries].sort((a, b) => {
+                                const serialA = Number.isFinite(Number(a.serialNo)) ? Number(a.serialNo) : null;
+                                const serialB = Number.isFinite(Number(b.serialNo)) ? Number(b.serialNo) : null;
+                                if (serialA !== null && serialB !== null && serialA !== serialB) return serialA - serialB;
+                                return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+                            });
+                            brokerSeq++;
+                            return (
                                         <div key={brokerName} style={{ marginBottom: '12px' }}>
                                             {/* Date + Paddy Sample bar — only first broker */}
                                             {brokerIdx === 0 && <div style={{
@@ -363,7 +372,7 @@ const RiceSampleBook: React.FC = () => {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {brokerEntries.map((entry, idx) => {
+                                {orderedEntries.map((entry, idx) => {
                                                         const qp = entry.qualityParameters;
                                                         const cr = entry.cookingReport;
                                                         const cookingFail = entry.lotSelectionDecision === 'PASS_WITH_COOKING' && cr && cr.status && cr.status.toLowerCase() === 'fail';

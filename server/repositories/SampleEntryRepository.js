@@ -181,6 +181,18 @@ class SampleEntryRepository {
 
   async findByRoleAndFilters(role, filters = {}, userId) {
     const where = {};
+    const normalizeStatusFilter = (status) => {
+      const key = String(status || '').toUpperCase();
+      const aliases = {
+        QUALITY_NEEDED: 'QUALITY_CHECK',
+        PENDING_LOT_SELECTION: 'LOT_SELECTION',
+        PENDING_COOKING_REPORT: 'COOKING_REPORT',
+        PENDING_LOTS_PASSED: 'FINAL_REPORT',
+        PENDING_ALLOTTING_SUPERVISOR: 'LOT_ALLOTMENT'
+      };
+      return aliases[key] || key || null;
+    };
+    const requestedStatus = normalizeStatusFilter(filters.status);
 
     // Role-based filtering
     const roleStatusMap = {
@@ -194,19 +206,33 @@ class SampleEntryRepository {
       financial_account: ['OWNER_FINANCIAL', 'MANAGER_FINANCIAL', 'FINAL_REVIEW']
     };
 
-    if (filters.status === 'COOKING_BOOK') {
+    if (requestedStatus === 'COOKING_BOOK') {
       // Only show entries currently pending cooking reports (or in RECHECK which stays in COOKING_REPORT status)
       where.workflowStatus = 'COOKING_REPORT';
-    } else if (filters.status) {
+      where.lotSelectionDecision = { [Op.ne]: 'FAIL' };
+    } else if (requestedStatus === 'RESAMPLE_COOKING_BOOK') {
+      // Resamples appear immediately in cooking book to allow concurrent work
+      where.workflowStatus = {
+        [Op.in]: ['STAFF_ENTRY', 'QUALITY_CHECK', 'COOKING_REPORT', 'LOT_ALLOTMENT']
+      };
+      where.lotSelectionDecision = 'FAIL';
+    } else if (requestedStatus) {
       // Special case for Rice Sample pending selection tab:
       // include QUALITY_CHECK + COOKING_REPORT + LOT_SELECTION so entries remain visible
       // after cooking PASS/MEDIUM transitions to LOT_SELECTION.
-      if (filters.status === 'QUALITY_CHECK' && filters.entryType === 'RICE_SAMPLE') {
+      if (requestedStatus === 'QUALITY_CHECK' && filters.entryType === 'RICE_SAMPLE') {
         where.workflowStatus = {
           [Op.in]: ['QUALITY_CHECK', 'COOKING_REPORT', 'LOT_SELECTION']
         };
       } else {
-        where.workflowStatus = filters.status;
+        where.workflowStatus = requestedStatus;
+        // Paddy re-sample should skip Pending Sample Selection tab completely.
+        if (requestedStatus === 'QUALITY_CHECK' && filters.entryType !== 'RICE_SAMPLE') {
+          where[Op.or] = [
+            { lotSelectionDecision: { [Op.ne]: 'FAIL' } },
+            { lotSelectionDecision: { [Op.is]: null } }
+          ];
+        }
       }
     } else if (roleStatusMap[role] !== null && roleStatusMap[role]) {
       where.workflowStatus = roleStatusMap[role];
@@ -230,17 +256,17 @@ class SampleEntryRepository {
     if (filters.location) where.location = { [Op.iLike]: `%${filters.location}%` };
 
     // PERFORMANCE: Build role-appropriate includes (avoids unnecessary JOINs)
-    const activeStatus = filters.status || (roleStatusMap[role] && roleStatusMap[role].length === 1 ? roleStatusMap[role][0] : null);
+    const activeStatus = requestedStatus || (roleStatusMap[role] && roleStatusMap[role].length === 1 ? roleStatusMap[role][0] : null);
 
     // Determine the actual statuses to query for include building
-    const statusesToInclude = filters.status === 'COOKING_BOOK'
+    const statusesToInclude = requestedStatus === 'COOKING_BOOK' || requestedStatus === 'RESAMPLE_COOKING_BOOK'
       ? ['COOKING_REPORT']
-      : (filters.status === 'QUALITY_CHECK' && filters.entryType === 'RICE_SAMPLE' ? ['QUALITY_CHECK', 'COOKING_REPORT', 'LOT_SELECTION'] : (activeStatus ? [activeStatus] : []));
+      : (requestedStatus === 'QUALITY_CHECK' && filters.entryType === 'RICE_SAMPLE' ? ['QUALITY_CHECK', 'COOKING_REPORT', 'LOT_SELECTION'] : (activeStatus ? [activeStatus] : []));
 
     const include = this._buildIncludesForRole(role, statusesToInclude.length > 0 ? statusesToInclude[0] : null);
 
     // Make sure cooking report is included for COOKING_BOOK or for RICE_SAMPLE in LOT_SELECTION (PENDING SELECTION) tab.
-    if (filters.status === 'COOKING_BOOK' || (filters.status === 'QUALITY_CHECK' && filters.entryType === 'RICE_SAMPLE')) {
+    if (requestedStatus === 'COOKING_BOOK' || requestedStatus === 'RESAMPLE_COOKING_BOOK' || (requestedStatus === 'QUALITY_CHECK' && filters.entryType === 'RICE_SAMPLE')) {
       const crInclude = include.find(i => i.as === 'cookingReport');
       if (!crInclude) {
         const { CookingReport } = require('../models');

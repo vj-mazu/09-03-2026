@@ -24,6 +24,7 @@ interface SampleEntry {
     sampleCollectedBy?: string;
     workflowStatus: string;
     lotSelectionDecision?: string;
+    lotSelectionAt?: string;
     qualityReportAttempts?: number;
     qualityParameters?: {
         moisture: number;
@@ -94,6 +95,12 @@ interface SampleEntry {
 }
 
 const toTitleCase = (str: string) => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : '';
+const getPartyLabel = (entry: SampleEntry) => {
+    const partyNameText = toTitleCase(entry.partyName || '').trim();
+    const lorryText = entry.lorryNumber ? entry.lorryNumber.toUpperCase() : '';
+    if (entry.entryType === 'DIRECT_LOADED_VEHICLE') return lorryText || partyNameText || '-';
+    return partyNameText || lorryText || '-';
+};
 const toNumberText = (value: any, digits = 2) => {
     const num = Number(value);
     return Number.isFinite(num) ? num.toFixed(digits).replace(/\.00$/, '') : '-';
@@ -140,6 +147,10 @@ const getResampleRoundLabel = (attempts: number) => {
     if (attempts <= 1) return '';
     return `Re-sample Round ${attempts}`;
 };
+const getSamplingLabel = (attemptNo: number) => {
+    if (attemptNo <= 1) return '1st';
+    return '2nd';
+};
 
 interface AdminSampleBook2Props {
     entryType?: string;
@@ -172,6 +183,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
     // Detail popup
     const [detailEntry, setDetailEntry] = useState<SampleEntry | null>(null);
     const [pricingDetail, setPricingDetail] = useState<PricingDetailState | null>(null);
+    const [remarksPopup, setRemarksPopup] = useState<{ isOpen: boolean; text: string }>({ isOpen: false, text: '' });
 
     useEffect(() => {
         loadEntries();
@@ -239,6 +251,9 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
             const dateA = new Date(a.entryDate).getTime();
             const dateB = new Date(b.entryDate).getTime();
             if (dateA !== dateB) return dateB - dateA; // Primary sort: Date DESC
+            const serialA = Number.isFinite(Number(a.serialNo)) ? Number(a.serialNo) : null;
+            const serialB = Number.isFinite(Number(b.serialNo)) ? Number(b.serialNo) : null;
+            if (serialA !== null && serialB !== null && serialA !== serialB) return serialA - serialB;
             return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(); // Secondary sort: CreatedAt ASC for stable Sl No
         });
         const grouped: Record<string, Record<string, typeof sorted>> = {};
@@ -264,25 +279,125 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
         const approvedBy = cr?.cookingApprovedBy || approvedByFromHistory || '';
         const eventDate = formatShortDateTime((latestEvent as any)?.date || null);
         const hasRemarks = !!(cr?.remarks && String(cr.remarks).trim());
+        const approvals = history.filter((h) => h?.status);
+        const staffAttempts = history.filter((h) => h?.cookingDoneBy && !h?.status);
+        const isResampleFlow = d === 'FAIL';
+        const pendingStaff = staffAttempts.length > approvals.length;
+        const cookingAttempts = staffAttempts.length;
+        const currentAttempt = isResampleFlow
+            ? Math.min(2, (pendingStaff ? Math.max(1, approvals.length + 1) : Math.max(1, approvals.length)))
+            : 1;
+        const isAttemptContext =
+            isResampleFlow
+            && (approvals.length > 1 || cookingAttempts > 1);
+
+        if (!isRiceBook && isAttemptContext) {
+            const mapStatus = (status?: string | null) => {
+                const key = String(status || '').toLowerCase();
+                if (key === 'pass' || key === 'ok') return 'Pass';
+                if (key === 'medium') return 'Medium';
+                if (key === 'fail') return 'Fail';
+                if (key === 'recheck') return 'Recheck';
+                return 'Pending';
+            };
+            const getStyle = (label: string) => {
+                if (label === 'Pass') return { bg: '#e8f5e9', color: '#2e7d32' };
+                if (label === 'Medium') return { bg: '#ffe0b2', color: '#f39c12' };
+                if (label === 'Fail') return { bg: '#ffcdd2', color: '#b71c1c' };
+                if (label === 'Recheck') return { bg: '#e3f2fd', color: '#1565c0' };
+                return { bg: '#ffe0b2', color: '#e65100' };
+            };
+
+            const firstLabel = mapStatus(approvals[0]?.status || cr?.status || null);
+            const secondLabel = pendingStaff ? 'Pending' : mapStatus(approvals[1]?.status || null);
+            const firstStyle = getStyle(firstLabel);
+            const secondStyle = getStyle(secondLabel);
+            const firstRemark = String(approvals[0]?.remarks || cr?.remarks || '').trim();
+
+            return (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', width: '100%' }}>
+                    <span style={{ background: firstStyle.bg, color: firstStyle.color, padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>
+                        {`${getSamplingLabel(1)}: ${firstLabel}`}
+                    </span>
+                    <span style={{ background: secondStyle.bg, color: secondStyle.color, padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>
+                        {`${getSamplingLabel(2)}: ${secondLabel}`}
+                    </span>
+                    {firstRemark && (
+                        <button
+                            type="button"
+                            onClick={() => setRemarksPopup({ isOpen: true, text: firstRemark })}
+                            style={{ color: '#8e24aa', fontSize: '9px', fontWeight: '700', cursor: 'pointer', background: 'transparent', border: 'none', padding: 0 }}
+                        >
+                            Remarks
+                        </button>
+                    )}
+                </div>
+            );
+        }
 
         // Pass Without Cooking = no cooking needed, show dash
         if (d === 'PASS_WITHOUT_COOKING') {
             return <span style={{ color: '#999', fontSize: '10px' }}>-</span>;
         }
+        let result = '';
+        let bg = '#f5f5f5';
+        let color = '#666';
+        let cleanLabel = 'Pending';
         const hasCookingOutcome = (d === 'PASS_WITH_COOKING' || d === 'SOLDOUT' || d === 'FAIL') && cr && cr.status;
         // Pass With Cooking + cooking report submitted = show actual result
         if (hasCookingOutcome) {
-            const result = cr.status.toLowerCase();
-            let bg = '#f5f5f5'; let color = '#666'; let label = cr.status;
-            if (result === 'pass' || result === 'ok') { bg = '#e8f5e9'; color = '#2e7d32'; label = '✓ Pass'; }
-            else if (result === 'fail') { bg = '#ffcdd2'; color = '#b71c1c'; label = '✕ Fail'; }
-            else if (result === 'recheck') { bg = '#e3f2fd'; color = '#1565c0'; label = '🔄 Recheck'; }
-            else if (result === 'medium') { bg = '#e8f5e9'; color = '#2e7d32'; label = '✓ Pass'; }
+            result = cr.status.toLowerCase();
+            if (result === 'pass' || result === 'ok') { bg = '#e8f5e9'; color = '#2e7d32'; cleanLabel = 'Pass'; }
+            else if (result === 'medium') { bg = '#ffe0b2'; color = '#f39c12'; cleanLabel = 'Medium'; }
+            else if (result === 'fail') { bg = '#ffcdd2'; color = '#b71c1c'; cleanLabel = 'Fail'; }
+            else if (result === 'recheck') { bg = '#e3f2fd'; color = '#1565c0'; cleanLabel = 'Recheck'; }
 
             if (!isRiceBook) {
                 return (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', width: '100%' }}>
-                        <span style={{ background: bg, color, padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>{label}</span>
+                        <span style={{ background: bg, color, padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>
+                            {isAttemptContext ? `${getSamplingLabel(currentAttempt)}: ${cleanLabel}` : cleanLabel}
+                        </span>
+                        {result === 'recheck' && cr.remarks && (
+                            <button
+                                type="button"
+                                onClick={() => setRemarksPopup({ isOpen: true, text: String(cr.remarks || '') })}
+                                style={{ color: '#8e24aa', fontSize: '9px', fontWeight: '700', cursor: 'pointer', background: 'transparent', border: 'none', padding: 0 }}
+                            >
+                                Remarks
+                            </button>
+                        )}
+                    </div>
+                );
+            }
+
+            return (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                    <span style={{ background: bg, color, padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>
+                        {isAttemptContext ? `${getSamplingLabel(currentAttempt)}: ${cleanLabel}` : cleanLabel}
+                    </span>
+                    {doneBy && <span style={{ fontSize: '9px', color: '#4e342e', fontWeight: '700' }}>Done: {toTitleCase(doneBy)}</span>}
+                    {approvedBy && <span style={{ fontSize: '9px', color: '#0d47a1', fontWeight: '700' }}>Appr: {toTitleCase(approvedBy)}</span>}
+                    {eventDate && <span style={{ fontSize: '9px', color: '#616161' }}>{eventDate}</span>}
+                    {hasRemarks && (
+                        <button
+                            type="button"
+                            onClick={() => setRemarksPopup({ isOpen: true, text: String(cr.remarks || '') })}
+                            style={{ color: '#8e24aa', fontSize: '9px', fontWeight: '700', cursor: 'pointer', background: 'transparent', border: 'none', padding: 0 }}
+                        >
+                            Remarks
+                        </button>
+                    )}
+                </div>
+            );
+        }
+        if (false) {
+            if (!isRiceBook) {
+                return (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '3px', width: '100%' }}>
+                        <span style={{ background: bg, color, padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>
+                            {isAttemptContext ? `${getSamplingLabel(currentAttempt)}: ${cleanLabel}` : cleanLabel}
+                        </span>
                         {result === 'recheck' && cr.remarks && (
                             <span title={cr.remarks} style={{ color: '#8e24aa', fontSize: '9px', fontWeight: '700', cursor: 'help' }}>💬 Remarks</span>
                         )}
@@ -292,7 +407,9 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
 
             return (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
-                    <span style={{ background: bg, color, padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>{label}</span>
+                    <span style={{ background: bg, color, padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '700' }}>
+                        {isAttemptContext ? `${getSamplingLabel(currentAttempt)}: ${cleanLabel}` : cleanLabel}
+                    </span>
                     {doneBy && <span style={{ fontSize: '9px', color: '#4e342e', fontWeight: '700' }}>Done: {toTitleCase(doneBy)}</span>}
                     {approvedBy && <span style={{ fontSize: '9px', color: '#0d47a1', fontWeight: '700' }}>Appr: {toTitleCase(approvedBy)}</span>}
                     {eventDate && <span style={{ fontSize: '9px', color: '#616161' }}>{eventDate}</span>}
@@ -305,7 +422,8 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
         // Pass With Cooking but no cooking report yet = Pending
         if (d === 'PASS_WITH_COOKING' && (!cr || !cr.status)) {
             if (!isRiceBook) {
-                return <span style={{ background: '#ffe0b2', color: '#e65100', padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '600' }}>⏳ Pending</span>;
+                const pendingLabel = isAttemptContext ? `${getSamplingLabel(currentAttempt)}: Pending` : 'Pending';
+                return <span style={{ background: '#ffe0b2', color: '#e65100', padding: '1px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: '600' }}>{pendingLabel}</span>;
             }
             return (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
@@ -324,12 +442,18 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
         const d = entry.lotSelectionDecision;
         const cr = entry.cookingReport;
         const resampleAttempts = Math.max(0, Number(entry.qualityReportAttempts || 0));
+        const cookingStatusKey = String(cr?.status || '').toUpperCase();
+        const isCookingPassed = cookingStatusKey === 'PASS' || cookingStatusKey === 'MEDIUM';
+        const isResampleInProgress = d === 'FAIL' && s !== 'FAILED' && !isCookingPassed && !entry.offering?.finalPrice;
+        const showResampleRound = resampleAttempts > 1 && isResampleInProgress;
         let label = 'Pending';
         let bg = '#ffe0b2';
         let color = '#e65100';
+        // Resample in-progress only while current resample cycle is not yet passed/finalized
         if (d === 'SOLDOUT') { bg = '#800000'; color = '#ffffff'; label = 'Sold Out'; }
-        else if (s === 'FAILED' || d === 'FAIL') { bg = '#ffcdd2'; color = '#b71c1c'; label = 'Fail'; }
-        else if (d === 'PASS_WITH_COOKING' && cr && cr.status) {
+        else if (s === 'FAILED') { bg = '#ffcdd2'; color = '#b71c1c'; label = 'Fail'; }
+        else if (isResampleInProgress) { bg = '#fff3e0'; color = '#e65100'; label = 'Re-sample Pending'; }
+        else if ((d === 'PASS_WITH_COOKING' || d === 'SOLDOUT' || d === 'FAIL') && cr && cr.status) {
             const result = cr.status.toLowerCase();
             if (result === 'pass' || result === 'ok') {
                 // Check if only 100-Gms quality data — show "100-Gms Passed"
@@ -341,10 +465,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
             else if (result === 'fail') { bg = '#ffcdd2'; color = '#b71c1c'; label = 'Fail'; }
             else if (result === 'recheck') { bg = '#ffe0b2'; color = '#e65100'; label = 'Pending'; }
             else if (result === 'medium') {
-                const qp = entry.qualityParameters;
-                const hasFullQuality = qp && ((qp.cutting1 && Number(qp.cutting1) !== 0) || (qp.bend1 && Number(qp.bend1) !== 0) || (qp.mix && Number(qp.mix) !== 0) || (qp.mixS && Number(qp.mixS) !== 0) || (qp.mixL && Number(qp.mixL) !== 0));
-                if (qp && qp.moisture != null && !hasFullQuality) { bg = '#e8f5e9'; color = '#2e7d32'; label = '100-Gms/Pass'; }
-                else { bg = '#e8f5e9'; color = '#2e7d32'; label = 'Pass'; }
+                bg = '#e8f5e9'; color = '#2e7d32'; label = 'Pass';
             }
         }
         else if (s === 'COMPLETED' && entry.offering?.finalPrice) { bg = '#800000'; color = '#ffffff'; label = 'Sold Out'; }
@@ -353,7 +474,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
         else { bg = '#ffe0b2'; color = '#e65100'; label = 'Pending'; }
         return (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-                {resampleAttempts > 1 && (
+                {showResampleRound && (
                     <span
                         title={`This paddy lot reached quality attempt ${resampleAttempts}`}
                         style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '10px', backgroundColor: '#ffedd5', color: '#7c2d12', fontWeight: '700', whiteSpace: 'nowrap' as const, border: '1px solid #fdba74' }}
@@ -370,7 +491,8 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
         const qp = entry.qualityParameters;
         const d = entry.lotSelectionDecision;
         if (qp && qp.moisture != null) {
-            const qualityPassed = d === 'PASS_WITH_COOKING' || d === 'PASS_WITHOUT_COOKING' || d === 'SOLDOUT';
+            const isResampleAutoPass = Number(entry.qualityReportAttempts || 0) > 1;
+            const qualityPassed = d === 'PASS_WITH_COOKING' || d === 'PASS_WITHOUT_COOKING' || d === 'SOLDOUT' || isResampleAutoPass;
             // Check if full quality params are filled (cutting, bend, mix etc.)
             const hasFullQuality = (qp.cutting1 && Number(qp.cutting1) !== 0) || (qp.bend1 && Number(qp.bend1) !== 0) || (qp.mix && Number(qp.mix) !== 0) || (qp.mixS && Number(qp.mixS) !== 0) || (qp.mixL && Number(qp.mixL) !== 0);
             if (hasFullQuality) {
@@ -494,6 +616,12 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                         return (
                             <div key={dateKey} style={{ marginBottom: '20px' }}>
                                 {Object.entries(brokerGroups).sort(([a], [b]) => a.localeCompare(b)).map(([brokerName, brokerEntries], brokerIdx) => {
+                                    const orderedEntries = [...brokerEntries].sort((a, b) => {
+                                        const serialA = Number.isFinite(Number(a.serialNo)) ? Number(a.serialNo) : null;
+                                        const serialB = Number.isFinite(Number(b.serialNo)) ? Number(b.serialNo) : null;
+                                        if (serialA !== null && serialB !== null && serialA !== serialB) return serialA - serialB;
+                                        return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+                                    });
                                     brokerSeq++;
                                     return (
                                         <div key={brokerName} style={{ marginBottom: '12px' }}>
@@ -534,13 +662,21 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {brokerEntries.map((entry, idx) => {
+                                                    {orderedEntries.map((entry, idx) => {
                                                         const qp = entry.qualityParameters;
                                                         const cr = entry.cookingReport;
                                                         const cookingFail = entry.lotSelectionDecision === 'PASS_WITH_COOKING' && cr && cr.status && cr.status.toLowerCase() === 'fail';
-                                                        const rowBg = cookingFail
-                                                            ? '#fff0f0'
-                                                            : entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : entry.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff';
+                                                        const cookingStatusKey = String(cr?.status || '').toUpperCase();
+                                                        const isResampleRow =
+                                                            entry.lotSelectionDecision === 'FAIL'
+                                                            && entry.workflowStatus !== 'FAILED'
+                                                            && !['PASS', 'MEDIUM'].includes(cookingStatusKey)
+                                                            && !entry.offering?.finalPrice;
+                                                        const rowBg = isResampleRow
+                                                            ? '#fff3e0'
+                                                            : cookingFail
+                                                                ? '#fff0f0'
+                                                                : entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : entry.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff';
 
                                                         const fallback = entryType === 'RICE_SAMPLE' ? '--' : '-';
                                                         const fmtVal = (v: any, forceDecimal = false, precision = 2) => {
@@ -564,8 +700,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap' }}>{Number(entry.packaging) === 0 ? 'Loose' : `${entry.packaging || '75'} kg`}</td>
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '14px', cursor: 'pointer', color: '#1565c0', fontWeight: '600', textAlign: 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
                                                                     onClick={() => setDetailEntry(entry)}>
-                                                                    {toTitleCase(entry.partyName) || ''}
-                                                                    {entry.entryType === 'DIRECT_LOADED_VEHICLE' && entry.lorryNumber ? <div style={{ fontSize: '13px', color: '#1565c0', fontWeight: '600' }}>{entry.lorryNumber.toUpperCase()}</div> : ''}
+                                                                    {getPartyLabel(entry)}
                                                                 </td>
                                                                 <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', textAlign: 'left', whiteSpace: 'nowrap' }}>
                                                                     {toTitleCase(entry.location) || '-'}
@@ -685,7 +820,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '16px' }}>
                                     {[
-                                        ['Party Name', toTitleCase(detailEntry.partyName) || (detailEntry.entryType === 'DIRECT_LOADED_VEHICLE' ? detailEntry.lorryNumber?.toUpperCase() : '')],
+                                        ['Party Name', getPartyLabel(detailEntry)],
                                         ['Paddy Location', detailEntry.location],
                                         ['Sample Collected By', toTitleCase(detailEntry.sampleCollectedBy || '-')],
                                     ].map(([label, value], i) => (
@@ -833,7 +968,7 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                                 {pricingDetail.mode === 'offer' ? 'Offer Details' : 'Final Details'}
                             </div>
                             <div style={{ fontSize: '12px', opacity: 0.95, marginTop: '4px' }}>
-                                {toTitleCase(pricingDetail.entry.partyName)} | {toTitleCase(pricingDetail.entry.variety)} | {toTitleCase(pricingDetail.entry.location)}
+                                {getPartyLabel(pricingDetail.entry)} | {toTitleCase(pricingDetail.entry.variety)} | {toTitleCase(pricingDetail.entry.location)}
                             </div>
                         </div>
                         <div style={{ padding: '16px 18px 18px' }}>
@@ -870,6 +1005,38 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
                     </div>
                 </div>
             )}
+
+            {remarksPopup.isOpen && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        backgroundColor: 'rgba(0,0,0,0.55)',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        zIndex: 1000,
+                        padding: '16px'
+                    }}
+                    onClick={() => setRemarksPopup({ isOpen: false, text: '' })}
+                >
+                    <div
+                        style={{ background: '#fff', width: '100%', maxWidth: '420px', borderRadius: '10px', boxShadow: '0 16px 50px rgba(0,0,0,0.25)', padding: '16px' }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div style={{ fontSize: '16px', fontWeight: '800', color: '#1f2937', marginBottom: '10px' }}>Remarks</div>
+                        <div style={{ fontSize: '13px', color: '#475569', background: '#f8fafc', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', minHeight: '60px' }}>
+                            {remarksPopup.text || '-'}
+                        </div>
+                        <button
+                            onClick={() => setRemarksPopup({ isOpen: false, text: '' })}
+                            style={{ marginTop: '12px', width: '100%', padding: '9px', background: '#1565c0', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            )}
             {/* Pagination */}
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', padding: '16px 0', marginTop: '12px' }}>
                 <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}
@@ -887,5 +1054,6 @@ const AdminSampleBook2: React.FC<AdminSampleBook2Props> = ({ entryType, excludeE
 };
 
 export default AdminSampleBook2;
+
 
 

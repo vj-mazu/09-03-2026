@@ -36,6 +36,7 @@ interface SampleEntry {
   qualityParameters?: any;
   cookingReport?: any;
   creator?: { id: number; username: string };
+  qualityReportAttempts?: number;
 }
 
 interface OfferingData {
@@ -141,16 +142,16 @@ interface OfferVersionData {
 }
 
 // Shared styles
-const labelStyle: React.CSSProperties = { display: 'block', marginBottom: '6px', fontWeight: '600', color: '#333', fontSize: '13px' };
-const inputStyle: React.CSSProperties = { width: '100%', padding: '10px 12px', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box', backgroundColor: '#fff' };
-const radioLabelStyle: React.CSSProperties = { fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' };
+const labelStyle: React.CSSProperties = { display: 'block', marginBottom: '4px', fontWeight: '600', color: '#333', fontSize: '12px' };
+const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 10px', borderRadius: '6px', fontSize: '12px', boxSizing: 'border-box', backgroundColor: '#fff' };
+const radioLabelStyle: React.CSSProperties = { fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' };
 
 const headerCellStyle: React.CSSProperties = { padding: '8px', fontWeight: '600', fontSize: '11px', whiteSpace: 'nowrap' };
 const dataCellStyle: React.CSSProperties = { padding: '6px', fontSize: '11px', whiteSpace: 'nowrap' };
-const compactModalGridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', marginBottom: '8px' };
+const compactModalGridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '6px', marginBottom: '6px' };
 const compactSplitInputStyle: React.CSSProperties = { display: 'flex', gap: '4px', flexWrap: 'wrap' };
-const compactNarrowFieldStyle: React.CSSProperties = { maxWidth: '172px' };
-const compactMiniFieldStyle: React.CSSProperties = { maxWidth: '150px' };
+const compactNarrowFieldStyle: React.CSSProperties = { maxWidth: '150px' };
+const compactMiniFieldStyle: React.CSSProperties = { maxWidth: '132px' };
 
 const toTitleCase = (str: string) => str ? str.replace(/\b\w/g, c => c.toUpperCase()) : '';
 const toNumberText = (value: any, digits = 2) => {
@@ -235,7 +236,7 @@ const parseOptionalNumber = (value: string) => value === '' ? null : parseFloat(
 const cookingStatusLabel = (status?: string) => {
   const key = (status || '').toUpperCase();
   if (key === 'PASS') return 'Pass';
-  if (key === 'MEDIUM') return 'Pass/Med';
+  if (key === 'MEDIUM') return 'Medium';
   if (key === 'RECHECK') return 'Recheck';
   if (key === 'FAIL') return 'Fail';
   return '-';
@@ -245,7 +246,7 @@ const getOfferLabel = (key: OfferSlotKey) => key === 'offer1' ? 'Offer 1' : key 
 const DEFAULT_PADDY_OFFER: OfferingData = {
   offerRate: '',
   sute: '',
-  suteUnit: 'per_ton',
+  suteUnit: 'per_bag',
   baseRateType: 'PD_LOOSE',
   baseRateUnit: 'per_bag',
   offerBaseRateValue: '',
@@ -268,7 +269,7 @@ const DEFAULT_PADDY_OFFER: OfferingData = {
   bankLoanEnabled: false,
   bankLoanValue: '',
   bankLoanUnit: 'lumps',
-  paymentConditionEnabled: false,
+  paymentConditionEnabled: true,
   paymentConditionValue: '15',
   paymentConditionUnit: 'days',
   remarks: ''
@@ -300,7 +301,7 @@ const DEFAULT_FINAL_DATA: FinalPriceFormData = {
   bankLoanEnabled: false,
   bankLoanValue: '',
   bankLoanUnit: 'lumps',
-  paymentConditionEnabled: false,
+  paymentConditionEnabled: true,
   paymentConditionValue: '15',
   paymentConditionUnit: 'days',
   finalPrice: '',
@@ -331,13 +332,16 @@ const getActiveOffer = (offering: any): OfferVersionData | null => {
   if (!versions.length) return null;
   return versions.find((offer) => offer.key === offering?.activeOfferKey) || getLatestOffer(offering);
 };
-const isLooseRateType = (value?: string) => ['PD_LOOSE', 'MD_LOOSE'].includes(String(value || '').toUpperCase());
+const LF_RATE_TYPES = new Set(['PD_LOOSE', 'MD_LOOSE', 'PD_WB']);
+const EGB_RATE_TYPES = new Set(['PD_LOOSE', 'MD_LOOSE']);
+const hasLfForRateType = (value?: string) => LF_RATE_TYPES.has(String(value || '').toUpperCase());
+const hasEgbForRateType = (value?: string) => EGB_RATE_TYPES.has(String(value || '').toUpperCase());
 const buildOfferFormData = (offer?: Partial<OfferVersionData> | null): OfferingData => ({
   ...DEFAULT_PADDY_OFFER,
   offerRate: offer?.offerBaseRateValue?.toString() || '',
   offerBaseRateValue: offer?.offerBaseRateValue?.toString() || '',
   sute: offer?.sute?.toString() || '',
-  suteUnit: offer?.suteUnit || 'per_ton',
+  suteUnit: offer?.suteUnit || 'per_bag',
   baseRateType: offer?.baseRateType || 'PD_LOOSE',
   baseRateUnit: offer?.baseRateUnit || 'per_bag',
   hamaliEnabled: !!offer?.hamaliEnabled,
@@ -361,7 +365,7 @@ const buildOfferFormData = (offer?: Partial<OfferVersionData> | null): OfferingD
   bankLoanUnit: offer?.bankLoanUnit || 'lumps',
   paymentConditionEnabled: offer?.paymentConditionEnabled != null
     ? !!offer.paymentConditionEnabled
-    : !(offer?.paymentConditionValue == null || offer?.paymentConditionValue === ''),
+    : true,
   paymentConditionValue: offer?.paymentConditionValue?.toString() || '15',
   paymentConditionUnit: offer?.paymentConditionUnit || 'days',
   remarks: offer?.remarks || ''
@@ -412,6 +416,9 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
   const [offerData, setOfferData] = useState<OfferingData>(DEFAULT_PADDY_OFFER);
 
   const [finalData, setFinalData] = useState<FinalPriceFormData>(DEFAULT_FINAL_DATA);
+  const [finalResample, setFinalResample] = useState(false);
+  const [resampleCollectedBy, setResampleCollectedBy] = useState('');
+  const [paddySupervisors, setPaddySupervisors] = useState<{ id: number; username: string; staffType?: string | null }[]>([]);
 
   // Filters
   const [filterBroker, setFilterBroker] = useState('');
@@ -501,7 +508,14 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
 
   // Group entries by date then broker
   const groupedEntries = useMemo(() => {
-    const sorted = [...paginatedEntries].sort((a, b) => new Date(a.entryDate).getTime() - new Date(b.entryDate).getTime());
+    const sorted = [...paginatedEntries].sort((a, b) => {
+      const dateCompare = new Date(a.entryDate).getTime() - new Date(b.entryDate).getTime();
+      if (dateCompare !== 0) return dateCompare;
+      const serialA = Number.isFinite(Number(a.serialNo)) ? Number(a.serialNo) : null;
+      const serialB = Number.isFinite(Number(b.serialNo)) ? Number(b.serialNo) : null;
+      if (serialA !== null && serialB !== null && serialA !== serialB) return serialA - serialB;
+      return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+    });
 
     const grouped: Record<string, Record<string, typeof sorted>> = {};
     sorted.forEach(entry => {
@@ -629,6 +643,8 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
   // ===== FINAL PRICE MODAL =====
   const handleOpenFinalModal = async (entry: SampleEntry) => {
     setSelectedEntry(entry);
+    setFinalResample(false);
+    setResampleCollectedBy(entry.sampleCollectedBy || '');
     // Fetch offering data to auto-populate
     try {
       const token = localStorage.getItem('token');
@@ -667,7 +683,7 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
           bankLoanUnit: d.bankLoanUnit || 'lumps',
           paymentConditionEnabled: d.paymentConditionEnabled != null
             ? !!d.paymentConditionEnabled
-            : !(d.paymentConditionValue == null || d.paymentConditionValue === ''),
+            : true,
           paymentConditionValue: d.paymentConditionValue?.toString() || '15',
           paymentConditionUnit: d.paymentConditionUnit || 'days',
           finalPrice: d.finalPrice?.toString() || entry.finalPrice?.toString() || '',
@@ -682,6 +698,21 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
         finalPrice: entry.finalPrice?.toString() || ''
       });
     }
+    try {
+      const token = localStorage.getItem('token');
+      const supervisorRes = await axios.get<{ success: boolean; users: Array<{ id: number; username: string; staffType?: string | null }> }>(
+        `${API_URL}/sample-entries/paddy-supervisors`,
+        {
+          params: { staffType: 'location' },
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+      if (supervisorRes.data?.users) {
+        setPaddySupervisors(supervisorRes.data.users);
+      }
+    } catch {
+      setPaddySupervisors([]);
+    }
     setShowFinalPriceModal(true);
   };
 
@@ -693,6 +724,12 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
 
     try {
       setIsSubmitting(true);
+      if (finalResample && selectedEntry.entryType === 'LOCATION_SAMPLE' && !resampleCollectedBy) {
+        showNotification('Select Sample Collected By for resample.', 'error');
+        setIsSubmitting(false);
+        releaseSubmissionLock(lockKey);
+        return;
+      }
       const token = localStorage.getItem('token');
       await axios.post(
         `${API_URL}/sample-entries/${selectedEntry.id}/final-price`,
@@ -726,7 +763,9 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
           paymentConditionUnit: finalData.paymentConditionUnit,
           finalPrice: finalData.finalPrice ? parseFloat(finalData.finalPrice) : null,
           remarks: finalData.remarks,
-          isFinalized: true
+          isFinalized: true,
+          resampleAfterFinal: finalResample,
+          resampleCollectedBy: finalResample ? resampleCollectedBy : null
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -791,11 +830,11 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
     return parts.join(', ') || 'No data entered';
   };
 
-  const isEgbVisible = isLooseRateType(offerData.baseRateType);
-  const isLfVisible = isLooseRateType(offerData.baseRateType);
+  const isEgbVisible = hasEgbForRateType(offerData.baseRateType);
+  const isLfVisible = hasLfForRateType(offerData.baseRateType);
   const isCustomDivisorVisible = offerData.baseRateUnit === 'per_kg';
-  const isFinalEgbVisible = isLooseRateType(finalData.baseRateType);
-  const isFinalLfVisible = isLooseRateType(finalData.baseRateType);
+  const isFinalEgbVisible = hasEgbForRateType(finalData.baseRateType);
+  const isFinalLfVisible = hasLfForRateType(finalData.baseRateType);
   const isFinalCustomDivisorVisible = finalData.baseRateUnit === 'per_kg';
   const visibleOfferKeys = OFFER_KEYS.filter((slotKey) => offerVersions.some((offer) => offer.key === slotKey) || slotKey === currentOfferKey);
   const canAddMoreOffers = OFFER_KEYS.some((slotKey) => !visibleOfferKeys.includes(slotKey));
@@ -915,6 +954,12 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
             return (
               <div key={dateKey} style={{ marginBottom: '20px' }}>
                 {Object.entries(brokerGroups).sort(([a], [b]) => a.localeCompare(b)).map(([brokerName, brokerEntries], brokerIdx) => {
+                  const orderedEntries = [...brokerEntries].sort((a, b) => {
+                    const serialA = Number.isFinite(Number(a.serialNo)) ? Number(a.serialNo) : null;
+                    const serialB = Number.isFinite(Number(b.serialNo)) ? Number(b.serialNo) : null;
+                    if (serialA !== null && serialB !== null && serialA !== serialB) return serialA - serialB;
+                    return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+                  });
                   brokerSeq++;
                   return (
                     <div key={brokerName} style={{ marginBottom: '0px' }}>
@@ -980,17 +1025,32 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                           </tr>
                         </thead>
                         <tbody>
-                          {brokerEntries.map((entry, index) => {
+                          {orderedEntries.map((entry, index) => {
                             const o = offeringCache[entry.id] || entry.offering;
-                            const slNo = entry.serialNo || (index + 1);
+                            const slNo = index + 1;
                             const rowType = entry.entryType === 'DIRECT_LOADED_VEHICLE' ? 'RL' : entry.entryType === 'LOCATION_SAMPLE' ? 'LS' : 'MS';
                             const qp = entry.qualityParameters || {};
                             const cp = entry.cookingReport || {};
+                            const isResampleActive = entry.lotSelectionDecision === 'FAIL';
+                            const rowBgColor = isResampleActive
+                              ? '#fff7e6'
+                              : entry.entryType === 'DIRECT_LOADED_VEHICLE'
+                                ? '#e3f2fd'
+                                : entry.entryType === 'LOCATION_SAMPLE'
+                                  ? '#ffe0b2'
+                                  : '#ffffff';
                             return (
-                              <tr key={entry.id} style={{ backgroundColor: entry.entryType === 'DIRECT_LOADED_VEHICLE' ? '#e3f2fd' : entry.entryType === 'LOCATION_SAMPLE' ? '#ffe0b2' : '#ffffff' }}>
+                              <tr key={entry.id} style={{ backgroundColor: rowBgColor }}>
                                 {isRiceMode ? (
                                   <>
-                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap' }}>{slNo}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                        {slNo}
+                                        {Math.max(0, Number(entry.qualityReportAttempts || 0)) > 1 && (
+                                          <span style={{ fontSize: '9px', backgroundColor: '#ffedd5', color: '#c2410c', border: '1px solid #fdba74', padding: '1px 4px', borderRadius: '4px', fontWeight: 'bold' }}>Re-sample</span>
+                                        )}
+                                      </div>
+                                    </td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '700', whiteSpace: 'nowrap' }}>{rowType}</td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', textAlign: 'center', fontWeight: '600', fontSize: '13px', whiteSpace: 'nowrap' }}>{entry.bags?.toLocaleString('en-IN') || '0'}</td>
                                     <td style={{ border: '1px solid #000', padding: '3px 4px', fontSize: '13px', textAlign: 'center', whiteSpace: 'nowrap' }}>{entry.packaging || '-'}</td>
@@ -1016,7 +1076,14 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                                   </>
                                 ) : (
                                   <>
-                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: '600' }}>{slNo}</td>
+                                    <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: '600' }}>
+                                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                        {slNo}
+                                        {Math.max(0, Number(entry.qualityReportAttempts || 0)) > 1 && (
+                                          <span style={{ fontSize: '9px', backgroundColor: '#ffedd5', color: '#c2410c', border: '1px solid #fdba74', padding: '1px 4px', borderRadius: '4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Re-sample</span>
+                                        )}
+                                      </div>
+                                    </td>
                                     <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: '700' }}>{rowType}</td>
                                     <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center', fontWeight: '600' }}>{entry.bags?.toLocaleString('en-IN') || '0'}</td>
                                     <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>{entry.packaging || '-'}</td>
@@ -1105,7 +1172,7 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                                       ) : <span>{o?.finalPrice || entry.finalPrice ? `Rs ${toNumberText(o?.finalPrice || entry.finalPrice)}` : '-'}</span>}
                                     </td>
                                     <td style={{ border: '1px solid #000', padding: '3px', textAlign: 'center' }}>
-                                      {(isAdmin || isManager) && (
+                                      {(isAdmin || isManager) && entry.lotSelectionDecision !== 'FAIL' && (
                                         isRiceMode
                                           ? entry.workflowStatus === 'LOT_SELECTION'
                                           : ['LOT_SELECTION', 'FINAL_REPORT'].includes(entry.workflowStatus)
@@ -1125,22 +1192,38 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                                           </button>
                                         </div>
                                       ) : (
-                                        <span
-                                          style={{
-                                            fontWeight: 700,
-                                            color: entry.lotSelectionDecision === 'SOLDOUT'
-                                              ? '#b71c1c'
-                                              : entry.lotSelectionDecision === 'FAIL'
-                                                ? '#ef6c00'
-                                                : '#6b7280'
-                                          }}
-                                        >
-                                          {entry.lotSelectionDecision === 'SOLDOUT'
-                                            ? 'Sold Out'
-                                            : entry.lotSelectionDecision === 'FAIL'
-                                              ? 'Re-sample'
-                                              : '-'}
-                                        </span>
+                                        entry.lotSelectionDecision === 'FAIL' ? (
+                                          (() => {
+                                            const resampleCookingDone = ['PASS', 'MEDIUM'].includes(String(cp.status || '').toUpperCase());
+                                            const resampleQualityDone = !!(qp.reportedBy || qp.id);
+                                            const resampleReadyForFinal = ['LOT_SELECTION', 'FINAL_REPORT'].includes(entry.workflowStatus) && resampleQualityDone && resampleCookingDone;
+                                            return (
+                                              <span
+                                                style={{
+                                                  display: 'inline-block',
+                                                  padding: '2px 8px',
+                                                  borderRadius: '10px',
+                                                  fontSize: '10px',
+                                                  fontWeight: 800,
+                                                  background: resampleReadyForFinal ? '#e8f5e9' : '#fff3cd',
+                                                  color: resampleReadyForFinal ? '#2e7d32' : '#8a6400',
+                                                  border: resampleReadyForFinal ? '1px solid #c8e6c9' : '1px solid #f4d06f'
+                                                }}
+                                              >
+                                                {resampleReadyForFinal ? 'Ready for Loading' : 'Resample'}
+                                              </span>
+                                            );
+                                          })()
+                                        ) : (
+                                          <span
+                                            style={{
+                                              fontWeight: 700,
+                                              color: entry.lotSelectionDecision === 'SOLDOUT' ? '#b71c1c' : '#6b7280'
+                                            }}
+                                          >
+                                            {entry.lotSelectionDecision === 'SOLDOUT' ? 'Sold Out' : '-'}
+                                          </span>
+                                        )
                                       )}
                                     </td>
                                   </>
@@ -1193,13 +1276,13 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
             zIndex: 1000, padding: '12px'
           }}>
             <div style={{
-              backgroundColor: 'white', padding: '12px', borderRadius: '12px',
-              width: '100%', maxWidth: '720px', maxHeight: '90vh',
+              backgroundColor: 'white', padding: '10px', borderRadius: '12px',
+              width: '100%', maxWidth: '520px', maxHeight: '90vh',
               boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
               overflowY: 'auto'
             }}>
               <h3 style={{
-                marginTop: 0, marginBottom: '10px', fontSize: '18px', fontWeight: '700',
+                marginTop: 0, marginBottom: '8px', fontSize: '16px', fontWeight: '700',
                 color: '#2c3e50', borderBottom: '3px solid #3498db', paddingBottom: '8px',
                 textAlign: 'center'
               }}>
@@ -1208,8 +1291,8 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
 
               {/* Entry Info - one line */}
               <div style={{
-                backgroundColor: '#eaf2f8', padding: '7px 10px', borderRadius: '6px',
-                marginBottom: '8px', fontSize: '11px', textAlign: 'center', lineHeight: '1.45'
+                backgroundColor: '#eaf2f8', padding: '6px 8px', borderRadius: '6px',
+                marginBottom: '6px', fontSize: '10px', textAlign: 'center', lineHeight: '1.4'
               }}>
                 Bags: <b>{selectedEntry.bags?.toLocaleString('en-IN')}</b> | Pkg: <b>{selectedEntry.packaging || '75'} Kg</b> | Party: <b>{selectedEntry.partyName}</b> | <b>{selectedEntry.location}</b> | <b>{selectedEntry.variety}</b>
               </div>
@@ -1260,12 +1343,12 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                       </button>
                     )}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px' }}>
                     <span style={{ color: '#475569', fontWeight: '600' }}>Final Rate Uses</span>
                     <select
                       value={activeOfferKey}
                       onChange={(e) => setActiveOfferKey(e.target.value as OfferSlotKey)}
-                      style={{ ...inputStyle, width: '130px', padding: '7px 10px', fontSize: '12px' }}
+                      style={{ ...inputStyle, width: '120px', padding: '6px 8px', fontSize: '11px' }}
                     >
                       {visibleOfferKeys.map((slotKey) => (
                         <option key={slotKey} value={slotKey}>{getOfferLabel(slotKey)}</option>
@@ -1283,7 +1366,7 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                     <div style={{ display: 'flex', gap: '4px', marginBottom: '4px', flexWrap: 'wrap' }}>
                       <select value={offerData.baseRateType}
                         onChange={e => setOfferData({ ...offerData, baseRateType: e.target.value })}
-                        style={{ ...inputStyle, flex: '1 1 96px', minWidth: '96px', cursor: 'pointer', fontSize: '11px' }} required>
+                        style={{ ...inputStyle, flex: '0 0 120px', width: '120px', minWidth: '120px', cursor: 'pointer', fontSize: '11px' }} required>
                         <option value="PD_LOOSE">PD/Loose</option>
                         <option value="PD_WB">PD/WB</option>
                         <option value="MD_WB">MD/WB</option>
@@ -1291,7 +1374,7 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                       </select>
                       <input type="text" inputMode="decimal" value={offerData.offerBaseRateValue}
                         onChange={e => setOfferData({ ...offerData, offerBaseRateValue: sanitizeAmountInput(e.target.value) })}
-                        style={{ ...inputStyle, flex: '1' }} placeholder="Rate" />
+                        style={{ ...inputStyle, flex: '1 1 180px', minWidth: '160px' }} placeholder="Rate" />
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
                       <div style={{ display: 'flex', gap: '6px', fontSize: '11px', flexWrap: 'wrap' }}>
@@ -1418,7 +1501,7 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                         )}
                       </>
                     ) : (
-                      <div style={{ ...inputStyle, backgroundColor: '#f8fafc', color: '#64748b', fontSize: '12px' }}>Hidden for WB types</div>
+                      <div style={{ ...inputStyle, backgroundColor: '#f8fafc', color: '#64748b', fontSize: '12px' }}>Not Applicable for MD/WB</div>
                     )}
                   </div>
                 </div>
@@ -1436,8 +1519,8 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                       {offerData.cdEnabled && (
                         <div style={compactSplitInputStyle}>
                           <input type="text" inputMode="decimal" value={offerData.cdValue}
-                            onChange={e => setOfferData({ ...offerData, cdValue: sanitizeAmountInput(e.target.value) })}
-                            style={{ ...inputStyle, flex: 1 }} placeholder="CD value" />
+                            onChange={e => setOfferData({ ...offerData, cdValue: sanitizeAmountInput(e.target.value, 8) })}
+                            style={{ ...inputStyle, flex: 1, minWidth: '120px' }} placeholder="CD value" />
                           <select value={offerData.cdUnit} onChange={e => setOfferData({ ...offerData, cdUnit: e.target.value as 'lumps' | 'percentage' })}
                             style={{ ...inputStyle, width: '98px', fontSize: '11px' }}>
                             <option value="lumps">Lumps</option>
@@ -1457,8 +1540,8 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                       {offerData.bankLoanEnabled && (
                         <div style={compactSplitInputStyle}>
                           <input type="text" inputMode="decimal" value={offerData.bankLoanValue}
-                            onChange={e => setOfferData({ ...offerData, bankLoanValue: sanitizeAmountInput(e.target.value) })}
-                            style={{ ...inputStyle, flex: 1 }} placeholder="Bank loan" />
+                            onChange={e => setOfferData({ ...offerData, bankLoanValue: sanitizeAmountInput(e.target.value, 8) })}
+                            style={{ ...inputStyle, flex: 1, minWidth: '120px' }} placeholder="Bank loan" />
                           <select value={offerData.bankLoanUnit} onChange={e => setOfferData({ ...offerData, bankLoanUnit: e.target.value as 'per_bag' | 'lumps' })}
                             style={{ ...inputStyle, width: '92px', fontSize: '11px' }}>
                             <option value="lumps">Lumps</option>
@@ -1564,13 +1647,13 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
             zIndex: 1000, padding: '12px'
           }}>
             <div style={{
-              backgroundColor: 'white', padding: '12px', borderRadius: '12px',
-              width: '100%', maxWidth: '720px', maxHeight: '90vh',
+              backgroundColor: 'white', padding: '10px', borderRadius: '12px',
+              width: '100%', maxWidth: '520px', maxHeight: '90vh',
               boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
               overflowY: 'auto'
             }}>
               <h3 style={{
-                marginTop: 0, marginBottom: '10px', fontSize: '18px', fontWeight: '700',
+                marginTop: 0, marginBottom: '8px', fontSize: '16px', fontWeight: '700',
                 color: '#2c3e50', borderBottom: '3px solid #27ae60', paddingBottom: '8px',
                 textAlign: 'center'
               }}>
@@ -1579,8 +1662,8 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
 
               {/* Entry Info - one line */}
               <div style={{
-                backgroundColor: '#e8f8f5', padding: '7px 10px', borderRadius: '6px',
-                marginBottom: '8px', fontSize: '11px', textAlign: 'center', lineHeight: '1.45'
+                backgroundColor: '#e8f8f5', padding: '6px 8px', borderRadius: '6px',
+                marginBottom: '6px', fontSize: '10px', textAlign: 'center', lineHeight: '1.4'
               }}>
                 Bags: <b>{selectedEntry.bags?.toLocaleString('en-IN')}</b> | Pkg: <b>{selectedEntry.packaging || '75'} Kg</b> | Party: <b>{selectedEntry.partyName}</b> | <b>{selectedEntry.location}</b> | <b>{selectedEntry.variety}</b>
               </div>
@@ -1593,7 +1676,7 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                     <div style={{ display: 'flex', gap: '4px', marginBottom: '4px', flexWrap: 'wrap' }}>
                       <select value={finalData.baseRateType}
                         onChange={e => setFinalData({ ...finalData, baseRateType: e.target.value })}
-                        style={{ ...inputStyle, flex: '1 1 96px', minWidth: '96px', cursor: 'pointer', fontSize: '11px' }}>
+                        style={{ ...inputStyle, flex: '0 0 120px', width: '120px', minWidth: '120px', cursor: 'pointer', fontSize: '11px' }}>
                         <option value="PD_LOOSE">PD/Loose</option>
                         <option value="PD_WB">PD/WB</option>
                         <option value="MD_WB">MD/WB</option>
@@ -1601,7 +1684,7 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                       </select>
                       <input type="text" inputMode="decimal" value={finalData.finalBaseRate}
                         onChange={e => setFinalData({ ...finalData, finalBaseRate: sanitizeAmountInput(e.target.value) })}
-                        style={{ ...inputStyle, flex: '1' }} placeholder="Rate" />
+                        style={{ ...inputStyle, flex: '1 1 180px', minWidth: '160px' }} placeholder="Rate" />
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
                       <div style={{ display: 'flex', gap: '6px', fontSize: '11px', flexWrap: 'wrap' }}>
@@ -1729,7 +1812,7 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                         )}
                       </>
                     ) : (
-                      <div style={{ ...inputStyle, backgroundColor: '#f8fafc', color: '#64748b', fontSize: '12px' }}>Hidden for WB types</div>
+                      <div style={{ ...inputStyle, backgroundColor: '#f8fafc', color: '#64748b', fontSize: '12px' }}>Not Applicable for MD/WB</div>
                     )}
                   </div>
                 </div>
@@ -1747,8 +1830,8 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                       {finalData.cdEnabled && (
                         <div style={compactSplitInputStyle}>
                           <input type="text" inputMode="decimal" value={finalData.cdValue}
-                            onChange={e => setFinalData({ ...finalData, cdValue: sanitizeAmountInput(e.target.value) })}
-                            style={{ ...inputStyle, flex: 1 }} placeholder="CD value" />
+                            onChange={e => setFinalData({ ...finalData, cdValue: sanitizeAmountInput(e.target.value, 8) })}
+                            style={{ ...inputStyle, flex: 1, minWidth: '120px' }} placeholder="CD value" />
                           <select value={finalData.cdUnit} onChange={e => setFinalData({ ...finalData, cdUnit: e.target.value as 'lumps' | 'percentage' })}
                             style={{ ...inputStyle, width: '98px', fontSize: '11px' }}>
                             <option value="lumps">Lumps</option>
@@ -1768,8 +1851,8 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                       {finalData.bankLoanEnabled && (
                         <div style={compactSplitInputStyle}>
                           <input type="text" inputMode="decimal" value={finalData.bankLoanValue}
-                            onChange={e => setFinalData({ ...finalData, bankLoanValue: sanitizeAmountInput(e.target.value) })}
-                            style={{ ...inputStyle, flex: 1 }} placeholder="Bank loan" />
+                            onChange={e => setFinalData({ ...finalData, bankLoanValue: sanitizeAmountInput(e.target.value, 8) })}
+                            style={{ ...inputStyle, flex: 1, minWidth: '120px' }} placeholder="Bank loan" />
                           <select value={finalData.bankLoanUnit} onChange={e => setFinalData({ ...finalData, bankLoanUnit: e.target.value as 'per_bag' | 'lumps' })}
                             style={{ ...inputStyle, width: '92px', fontSize: '11px' }}>
                             <option value="lumps">Lumps</option>
@@ -1804,32 +1887,58 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
 
                 {/* Row 3: EGB */}
                 {isFinalEgbVisible && (
-                    <div style={{ marginBottom: '8px' }}>
-                      {isFinalEgbVisible && <div>
-                        <label style={labelStyle}>EGB</label>
-                        <div style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '11px' }}>
-                          <label style={{ ...radioLabelStyle, padding: '4px 10px', borderRadius: '4px', border: finalData.egbType === 'mill' ? '2px solid #27ae60' : '1px solid #ddd', backgroundColor: finalData.egbType === 'mill' ? '#e8f5e9' : 'transparent' }}>
-                            <input type="radio" name="finalEgbType" checked={finalData.egbType === 'mill'}
-                              onChange={() => setFinalData({ ...finalData, egbType: 'mill', egbValue: '0' })} />
-                            <span style={{ fontWeight: '600', color: '#2e7d32' }}>Mill</span>
-                          </label>
-                          <label style={{ ...radioLabelStyle, padding: '4px 10px', borderRadius: '4px', border: finalData.egbType === 'purchase' ? '2px solid #e67e22' : '1px solid #ddd', backgroundColor: finalData.egbType === 'purchase' ? '#ffe0b2' : 'transparent' }}>
-                            <input type="radio" name="finalEgbType" checked={finalData.egbType === 'purchase'}
-                              onChange={() => setFinalData({ ...finalData, egbType: 'purchase', egbValue: '' })} />
-                            <span style={{ fontWeight: '600', color: '#e67e22' }}>Purchase</span>
-                          </label>
-                        </div>
-                        <input type="text" inputMode="decimal" value={finalData.egbType === 'mill' ? '0' : finalData.egbValue}
-                          onChange={e => setFinalData({ ...finalData, egbValue: sanitizeAmountInput(e.target.value) })}
-                          disabled={finalData.egbType === 'mill'}
-                          style={{ ...inputStyle, backgroundColor: finalData.egbType === 'mill' ? '#f0f0f0' : '#fff', cursor: finalData.egbType === 'mill' ? 'not-allowed' : 'text', maxWidth: '240px' }} placeholder="EGB value" />
-                        <div style={{ marginTop: '4px', fontSize: '10px', color: '#64748b' }}>
-                          {finalData.egbType === 'mill' ? 'Mill entries go to EGB ledger with bags and date.' : 'Purchase EGB is used in patti only.'}
-                        </div>
-                      </div>}
-                    </div>
-                  )}
+                  <div style={{ marginBottom: '8px' }}>
+                    {isFinalEgbVisible && <div>
+                      <label style={labelStyle}>EGB</label>
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '11px' }}>
+                        <label style={{ ...radioLabelStyle, padding: '4px 10px', borderRadius: '4px', border: finalData.egbType === 'mill' ? '2px solid #27ae60' : '1px solid #ddd', backgroundColor: finalData.egbType === 'mill' ? '#e8f5e9' : 'transparent' }}>
+                          <input type="radio" name="finalEgbType" checked={finalData.egbType === 'mill'}
+                            onChange={() => setFinalData({ ...finalData, egbType: 'mill', egbValue: '0' })} />
+                          <span style={{ fontWeight: '600', color: '#2e7d32' }}>Mill</span>
+                        </label>
+                        <label style={{ ...radioLabelStyle, padding: '4px 10px', borderRadius: '4px', border: finalData.egbType === 'purchase' ? '2px solid #e67e22' : '1px solid #ddd', backgroundColor: finalData.egbType === 'purchase' ? '#ffe0b2' : 'transparent' }}>
+                          <input type="radio" name="finalEgbType" checked={finalData.egbType === 'purchase'}
+                            onChange={() => setFinalData({ ...finalData, egbType: 'purchase', egbValue: '' })} />
+                          <span style={{ fontWeight: '600', color: '#e67e22' }}>Purchase</span>
+                        </label>
+                      </div>
+                      <input type="text" inputMode="decimal" value={finalData.egbType === 'mill' ? '0' : finalData.egbValue}
+                        onChange={e => setFinalData({ ...finalData, egbValue: sanitizeAmountInput(e.target.value) })}
+                        disabled={finalData.egbType === 'mill'}
+                        style={{ ...inputStyle, backgroundColor: finalData.egbType === 'mill' ? '#f0f0f0' : '#fff', cursor: finalData.egbType === 'mill' ? 'not-allowed' : 'text', maxWidth: '240px' }} placeholder="EGB value" />
+                      <div style={{ marginTop: '4px', fontSize: '10px', color: '#64748b' }}>
+                        {finalData.egbType === 'mill' ? 'Mill entries go to EGB ledger with bags and date.' : 'Purchase EGB is used in patti only.'}
+                      </div>
+                    </div>}
+                  </div>
+                )}
 
+                {!isRiceMode && (
+                  <div style={{ marginBottom: '8px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: '6px', background: '#f8fafc' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700, color: '#1f2937' }}>
+                      <input
+                        type="checkbox"
+                        checked={finalResample}
+                        onChange={(e) => setFinalResample(e.target.checked)}
+                      />
+                      Add Final + Resample
+                    </label>
+                    {finalResample && selectedEntry?.entryType === 'LOCATION_SAMPLE' && (
+                      <select
+                        value={resampleCollectedBy}
+                        onChange={(e) => setResampleCollectedBy(e.target.value)}
+                        style={{ ...inputStyle, width: '220px', padding: '6px 8px', fontSize: '11px' }}
+                      >
+                        <option value="">Select Sample Collected By</option>
+                        {paddySupervisors.map((supervisor) => (
+                          <option key={supervisor.id} value={supervisor.username}>
+                            {supervisor.username}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
 
                 {/* Remarks */}
                 <div style={{ marginBottom: '8px' }}>
@@ -1880,4 +1989,3 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
 };
 
 export default FinalPassLots;
-

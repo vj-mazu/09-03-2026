@@ -40,6 +40,7 @@ const ManagerSampleReports = React.lazy(() => import('./pages/ManagerSampleRepor
 const EGBLedger = React.lazy(() => import('./pages/EGBLedger'));
 const CookingReportPage = React.lazy(() => import('./pages/CookingReport'));
 const RiceSampleReports = React.lazy(() => import('./pages/RiceSampleReports'));
+const ResampleAllotment = React.lazy(() => import('./pages/ResampleAllotment'));
 
 // Lightweight loading spinner for page transitions
 const PageLoader = () => (
@@ -238,6 +239,16 @@ const AppContent: React.FC = () => {
                   <ProtectedRoute roles={['manager', 'admin']}>
                     <Layout>
                       <RiceSampleReports />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/resample-allotment"
+                element={
+                  <ProtectedRoute roles={['manager', 'admin']}>
+                    <Layout>
+                      <ResampleAllotment excludeEntryType="RICE_SAMPLE" />
                     </Layout>
                   </ProtectedRoute>
                 }

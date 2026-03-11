@@ -18,10 +18,38 @@ const SampleEntryAuditLog = require('../models/SampleEntryAuditLog');
 const User = require('../models/User');
 const { Op, col, where: sqlWhere } = require('sequelize');
 const getWorkflowRole = (user) => user?.effectiveRole || user?.role;
+const canLocationStaffEditQuality = async (sampleEntry, reqUser) => {
+  const workflowRole = getWorkflowRole(reqUser);
+  if (workflowRole !== 'physical_supervisor' || sampleEntry.entryType !== 'LOCATION_SAMPLE') {
+    return true;
+  }
+
+  // Location staff can edit:
+  // 1) entries they created (existing behavior)
+  // 2) re-sample entries explicitly assigned to their username
+  if (sampleEntry.createdBy === reqUser.userId) {
+    return true;
+  }
+
+  let currentUsername = String(reqUser?.username || '').trim().toLowerCase();
+  if (!currentUsername) {
+    const currentUser = await User.findByPk(reqUser.userId, { attributes: ['username'], raw: true });
+    currentUsername = String(currentUser?.username || '').trim().toLowerCase();
+  }
+
+  const assignedUsername = String(sampleEntry.sampleCollectedBy || '').trim().toLowerCase();
+  const isAssignedCollector = !!assignedUsername
+    && !!currentUsername
+    && assignedUsername === currentUsername;
+
+  return isAssignedCollector;
+};
+
 const invalidateSampleEntryTabCaches = () => {
   [
     'sample-entries/tabs/final-pass-lots',
     'sample-entries/tabs/loading-lots',
+    'sample-entries/tabs/resample-assignments',
     'sample-entries/tabs/completed-lots',
     'sample-entries/by-role'
   ].forEach(invalidateCache);
@@ -30,11 +58,16 @@ const invalidateSampleEntryTabCaches = () => {
 // ─── Paddy Supervisors list (for Sample Collected By dropdown) ───
 router.get('/paddy-supervisors', authenticateToken, async (req, res) => {
   try {
+    const { staffType } = req.query;
+    const whereClause = {
+      role: 'staff',
+      isActive: true
+    };
+    if (staffType) {
+      whereClause.staffType = staffType;
+    }
     const supervisors = await User.findAll({
-      where: {
-        role: 'staff',
-        isActive: true
-      },
+      where: whereClause,
       attributes: ['id', 'username', 'staffType'],
       order: [['username', 'ASC']]
     });
@@ -151,6 +184,8 @@ const attachLoadingLotsHistories = async (rows) => {
   const pushHistoryValue = (list, value) => {
     const normalized = typeof value === 'string' ? value.trim() : '';
     if (!normalized) return;
+    const lower = normalized.toLowerCase();
+    if (list.some((item) => String(item).toLowerCase() === lower)) return;
     list.push(normalized);
   };
   const buildQualityAttemptDetail = (source, fallbackCreatedAt) => {
@@ -250,8 +285,8 @@ const attachLoadingLotsHistories = async (rows) => {
       ? row.sampleCollectedBy.trim()
       : '';
 
-    if (currentSampleCollectedBy && sampleCollectedHistory.length === 0) {
-      sampleCollectedHistory.push(currentSampleCollectedBy);
+    if (currentSampleCollectedBy) {
+      pushHistoryValue(sampleCollectedHistory, currentSampleCollectedBy);
     }
 
     target.sampleCollectedHistory = sampleCollectedHistory;
@@ -265,46 +300,59 @@ const attachLoadingLotsHistories = async (rows) => {
     }
 
     const history = [];
-    const qualityAttemptDetails = [];
     const auditLogs = qualityHistoryByQualityId.get(String(qualityId)) || [];
 
     auditLogs.forEach((log) => {
       const reportedBy = typeof log.newValues?.reportedBy === 'string'
         ? log.newValues.reportedBy.trim()
         : '';
-
       pushHistoryValue(history, reportedBy);
-
-      const detail = buildQualityAttemptDetail(log.newValues, log.createdAt);
-      if (detail) {
-        qualityAttemptDetails.push(detail);
-      }
     });
 
     const currentReportedBy = typeof row.qualityParameters?.reportedBy === 'string'
       ? row.qualityParameters.reportedBy.trim()
       : '';
 
-    if (currentReportedBy && history.length === 0) {
-      history.push(currentReportedBy);
+    if (currentReportedBy) {
+      pushHistoryValue(history, currentReportedBy);
     }
 
+    // Determine if this is a resample case (max 2 attempts: 1st sample + resample)
+    const isResampleCase = row?.lotSelectionDecision === 'FAIL';
+
+    // Build attempt details: strictly 1 or 2 attempts only
+    // Attempt 1 = FIRST audit log (original quality data)
+    // Attempt 2 = CURRENT quality data (resample data) — only if lotSelectionDecision === 'FAIL'
+    const qualityAttemptDetails = [];
+
+    if (auditLogs.length > 0) {
+      // Attempt 1: first audit log entry (original sample data)
+      const firstDetail = buildQualityAttemptDetail(auditLogs[0].newValues, auditLogs[0].createdAt);
+      if (firstDetail) {
+        qualityAttemptDetails.push({ attemptNo: 1, ...firstDetail });
+      }
+
+      // Attempt 2: current quality data (resample) — only if actual resample
+      if (isResampleCase && auditLogs.length > 1) {
+        const currentDetail = buildQualityAttemptDetail(row.qualityParameters, row.qualityParameters?.updatedAt || row.qualityParameters?.createdAt);
+        if (currentDetail) {
+          qualityAttemptDetails.push({ attemptNo: 2, ...currentDetail });
+        }
+      }
+    }
+
+    // Fallback: if no audit logs, use current quality data as attempt 1
     if (qualityAttemptDetails.length === 0) {
       const fallbackDetail = buildQualityAttemptDetail(row.qualityParameters, row.createdAt);
       if (fallbackDetail) {
-        qualityAttemptDetails.push(fallbackDetail);
+        qualityAttemptDetails.push({ attemptNo: 1, ...fallbackDetail });
       }
     }
 
     target.qualityReportHistory = history;
-    target.qualityReportAttempts = Math.max(
-      1,
-      auditLogs.length > 0 ? auditLogs.length : history.length
-    );
-    target.qualityAttemptDetails = qualityAttemptDetails.map((detail, index) => ({
-      attemptNo: index + 1,
-      ...detail
-    }));
+    // Cap attempts: 1 for normal, 2 for resample — never more
+    target.qualityReportAttempts = isResampleCase ? 2 : 1;
+    target.qualityAttemptDetails = qualityAttemptDetails;
   });
 
   return rows;
@@ -316,7 +364,9 @@ router.get('/tabs/loading-lots', authenticateToken, cacheMiddleware(30), async (
     const { page = 1, pageSize = 50, cursor, broker, variety, party, location, startDate, endDate, entryType, excludeEntryType } = req.query;
 
     const where = {
-      workflowStatus: 'LOT_ALLOTMENT'
+      workflowStatus: {
+        [Op.in]: ['LOT_ALLOTMENT', 'PHYSICAL_INSPECTION', 'INVENTORY_ENTRY', 'OWNER_FINANCIAL', 'MANAGER_FINANCIAL', 'FINAL_REVIEW', 'COMPLETED']
+      }
     };
     if (broker) where.brokerName = { [Op.iLike]: `%${broker}%` };
     if (variety) where.variety = { [Op.iLike]: `%${variety}%` };
@@ -337,7 +387,7 @@ router.get('/tabs/loading-lots', authenticateToken, cacheMiddleware(30), async (
       page: parseInt(page, 10),
       pageSize: parseInt(pageSize, 10),
       hydrateOptions: {
-        attributes: ['id', 'entryDate', 'brokerName', 'variety', 'partyName', 'location', 'bags', 'packaging', 'workflowStatus', 'createdAt', 'sampleCollectedBy', 'entryType', 'lorryNumber', 'lotSelectionDecision'],
+        attributes: ['id', 'serialNo', 'entryDate', 'brokerName', 'variety', 'partyName', 'location', 'bags', 'packaging', 'workflowStatus', 'createdAt', 'sampleCollectedBy', 'entryType', 'lorryNumber', 'lotSelectionDecision', 'lotSelectionAt'],
         include: [
           {
             model: QualityParameters,
@@ -352,7 +402,7 @@ router.get('/tabs/loading-lots', authenticateToken, cacheMiddleware(30), async (
           {
             model: CookingReport,
             as: 'cookingReport',
-            attributes: ['id', 'status', 'remarks'],
+            attributes: ['id', 'status', 'remarks', 'cookingDoneBy', 'cookingApprovedBy', 'history', 'updatedAt', 'createdAt'],
             required: false
           },
           { model: SampleEntryOffering, as: 'offering' },
@@ -376,6 +426,54 @@ router.get('/tabs/loading-lots', authenticateToken, cacheMiddleware(30), async (
   }
 });
 
+// ——— Resample Allotment (location resamples) ———
+router.get('/tabs/resample-assignments', authenticateToken, cacheMiddleware(30), async (req, res) => {
+  try {
+    const { page = 1, pageSize = 50, broker, variety, party, location, startDate, endDate, entryType, excludeEntryType } = req.query;
+
+    const where = {
+      lotSelectionDecision: 'FAIL',
+      workflowStatus: { [Op.ne]: 'FAILED' }
+    };
+    if (broker) where.brokerName = { [Op.iLike]: `%${broker}%` };
+    if (variety) where.variety = { [Op.iLike]: `%${variety}%` };
+    if (party) where.partyName = { [Op.iLike]: `%${party}%` };
+    if (location) where.location = { [Op.iLike]: `%${location}%` };
+    if (startDate && endDate) where.entryDate = { [Op.between]: [startDate, endDate] };
+    if (entryType) where.entryType = entryType;
+    if (excludeEntryType) where.entryType = { [Op.ne]: excludeEntryType };
+
+    const paginationQuery = buildCursorQuery(req.query, 'DESC', {
+      fields: SAMPLE_ENTRY_CURSOR_FIELDS
+    });
+    const result = await fetchHydratedSampleEntryPage({
+      model: SampleEntry,
+      baseWhere: where,
+      paginationQuery,
+      page: parseInt(page, 10),
+      pageSize: parseInt(pageSize, 10),
+      hydrateOptions: {
+        attributes: [
+          'id', 'serialNo', 'entryDate', 'brokerName', 'variety', 'partyName', 'location', 'bags',
+          'packaging', 'workflowStatus', 'createdAt', 'sampleCollectedBy', 'entryType',
+          'lorryNumber', 'lotSelectionDecision'
+        ],
+        include: [],
+        subQuery: false
+      }
+    });
+
+    if (result.pagination) {
+      res.json({ entries: result.entries, pagination: result.pagination });
+    } else {
+      res.json({ entries: result.entries, total: result.total, page: parseInt(page, 10), pageSize: parseInt(pageSize, 10) });
+    }
+  } catch (error) {
+    console.error('Error getting resample assignments:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ─── Final Pass Lots (optimized for very large datasets) ───
 router.get('/tabs/final-pass-lots', authenticateToken, cacheMiddleware(15), async (req, res) => {
   try {
@@ -395,6 +493,7 @@ router.get('/tabs/final-pass-lots', authenticateToken, cacheMiddleware(15), asyn
     // Final Pass Lots should include:
     // 1) entries directly moved to FINAL_REPORT
     // 2) entries that went to cooking and came back to LOT_SELECTION with PASS/MEDIUM
+    // 3) entries marked as resample from Final Lots (FAIL) which may already be in loading flow
     const cookingStatusPassOrMedium = sqlWhere(col('cookingReport.status'), { [Op.in]: ['PASS', 'MEDIUM'] });
     const conditionBlocks = [
       {
@@ -404,6 +503,24 @@ router.get('/tabs/final-pass-lots', authenticateToken, cacheMiddleware(15), asyn
             [Op.and]: [
               { workflowStatus: 'LOT_SELECTION', lotSelectionDecision: 'PASS_WITH_COOKING' },
               cookingStatusPassOrMedium
+            ]
+          },
+          {
+            [Op.and]: [
+              { lotSelectionDecision: 'FAIL' },
+              {
+                // Re-sample BEFORE final should stay visible in Final Pass Lots.
+                // Re-sample AFTER final (already in loading workflow) must skip this tab.
+                workflowStatus: {
+                  [Op.in]: [
+                    'STAFF_ENTRY',
+                    'QUALITY_CHECK',
+                    'COOKING_REPORT',
+                    'LOT_SELECTION',
+                    'FINAL_REPORT'
+                  ]
+                }
+              }
             ]
           }
         ]
@@ -668,9 +785,48 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Update sample entry
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
+    const existingEntry = await SampleEntryService.getSampleEntryById(req.params.id);
+    if (!existingEntry) {
+      return res.status(404).json({ error: 'Sample entry not found' });
+    }
+
+    const updates = { ...req.body };
+    const isResampleAssignmentUpdate =
+      Object.prototype.hasOwnProperty.call(updates, 'sampleCollectedBy')
+      && existingEntry.lotSelectionDecision === 'FAIL';
+
+    if (isResampleAssignmentUpdate) {
+      const workflowRole = getWorkflowRole(req.user);
+      if (!['admin', 'manager', 'owner'].includes(workflowRole)) {
+        return res.status(403).json({ error: 'Only admin/manager can assign resample supervisor' });
+      }
+
+      const assignedName = String(updates.sampleCollectedBy || '').trim();
+      if (!assignedName) {
+        return res.status(400).json({ error: 'Sample Collected By is required for resample assignment' });
+      }
+
+      const locationStaffUser = await User.findOne({
+        where: {
+          username: assignedName,
+          role: 'staff',
+          staffType: 'location',
+          isActive: true
+        },
+        attributes: ['id', 'username']
+      });
+
+      if (!locationStaffUser) {
+        return res.status(400).json({ error: 'Assigned user must be an active location staff' });
+      }
+
+      updates.sampleCollectedBy = locationStaffUser.username;
+      updates.entryType = 'LOCATION_SAMPLE';
+    }
+
     const entry = await SampleEntryService.updateSampleEntry(
       req.params.id, // Keep as UUID string
-      req.body,
+      updates,
       req.user.userId // Use userId from JWT token
     );
 
@@ -712,6 +868,25 @@ router.post('/:id/quality-parameters', authenticateToken, async (req, res) => {
         };
 
         const normalizeGramsReport = (value) => value === '5gms' ? '5gms' : '10gms';
+
+        // --- Authorization Check for Location Staff ---
+        const userRole = getWorkflowRole(req.user);
+        const sampleEntry = await SampleEntry.findByPk(req.params.id);
+        
+        if (!sampleEntry) {
+          return res.status(404).json({ error: 'Sample entry not found' });
+        }
+        
+        // Location staff can edit own LOCATION_SAMPLE entries OR assigned resample lots.
+        if (userRole === 'physical_supervisor' && sampleEntry.entryType === 'LOCATION_SAMPLE') {
+          const canEdit = await canLocationStaffEditQuality(sampleEntry, req.user);
+          if (!canEdit) {
+            return res.status(403).json({
+              error: 'You do not have permission to edit this lot. Only the assigned location staff or creator can edit quality parameters.'
+            });
+          }
+        }
+        // --------------------------------------------
 
         // Convert string values from FormData to numbers (with safe parsing)
         const qualityData = {
@@ -777,6 +952,25 @@ router.put('/:id/quality-parameters', authenticateToken, async (req, res) => {
 
       try {
         const sampleEntryId = req.params.id;
+
+        // --- Authorization Check for Location Staff ---
+        const userRole = getWorkflowRole(req.user);
+        const sampleEntry = await SampleEntry.findByPk(sampleEntryId);
+        
+        if (!sampleEntry) {
+          return res.status(404).json({ error: 'Sample entry not found' });
+        }
+        
+        // Location staff can edit own LOCATION_SAMPLE entries OR assigned resample lots.
+        if (userRole === 'physical_supervisor' && sampleEntry.entryType === 'LOCATION_SAMPLE') {
+          const canEdit = await canLocationStaffEditQuality(sampleEntry, req.user);
+          if (!canEdit) {
+            return res.status(403).json({
+              error: 'You do not have permission to edit this lot. Only the assigned location staff or creator can edit quality parameters.'
+            });
+          }
+        }
+        // --------------------------------------------
 
         // Get existing quality parameters for this entry
         const existing = await QualityParametersService.getQualityParametersBySampleEntry(sampleEntryId);
@@ -888,13 +1082,18 @@ router.put('/:id/physical-inspection/:inspectionId', authenticateToken, async (r
 
 router.post('/:id/lot-selection', authenticateToken, async (req, res) => {
   try {
-    const { decision } = req.body; // 'PASS_WITHOUT_COOKING', 'PASS_WITH_COOKING', 'FAIL'
+    let { decision } = req.body; // 'PASS_WITHOUT_COOKING', 'PASS_WITH_COOKING', 'FAIL'
     const entry = await SampleEntry.findByPk(req.params.id, {
-      attributes: ['id', 'entryType', 'workflowStatus']
+      attributes: ['id', 'entryType', 'workflowStatus', 'lotSelectionDecision']
     });
 
     if (!entry) {
       return res.status(404).json({ error: 'Sample entry not found' });
+    }
+
+    // In re-sample workflow, pending selection is always treated as pass-with-cooking.
+    if (entry.lotSelectionDecision === 'FAIL' && decision === 'PASS_WITHOUT_COOKING') {
+      decision = 'PASS_WITH_COOKING';
     }
 
     let nextStatus;
@@ -903,7 +1102,14 @@ router.post('/:id/lot-selection', authenticateToken, async (req, res) => {
     } else if (decision === 'PASS_WITH_COOKING') {
       nextStatus = 'COOKING_REPORT';
     } else if (decision === 'FAIL') {
-      nextStatus = entry.entryType === 'RICE_SAMPLE' ? 'FAILED' : 'QUALITY_CHECK';
+      if (entry.entryType === 'RICE_SAMPLE') {
+        nextStatus = 'FAILED';
+      } else if (entry.lotSelectionDecision === 'FAIL') {
+        // If a re-sample is failed again, close it as complete failure.
+        nextStatus = 'FAILED';
+      } else {
+        nextStatus = 'QUALITY_CHECK';
+      }
     } else if (decision === 'SOLDOUT') {
       nextStatus = 'FAILED';
     } else {
@@ -930,6 +1136,34 @@ router.post('/:id/lot-selection', authenticateToken, async (req, res) => {
     );
 
     invalidateSampleEntryTabCaches();
+
+    // Auto-skip Final Pass Lots for resample entries that already have offering/final price
+    // Scenario 2: PASS_WITHOUT_COOKING goes to FINAL_REPORT, but if price exists, skip to LOT_ALLOTMENT
+    if (nextStatus === 'FINAL_REPORT') {
+      try {
+        const SampleEntryOffering = require('../models/SampleEntryOffering');
+        const offering = await SampleEntryOffering.findOne({
+          where: { sampleEntryId: req.params.id },
+          attributes: ['id', 'finalPrice', 'isFinalized', 'offerBaseRateValue'],
+          raw: true
+        });
+
+        // If offering exists with a finalized price, this is Scenario 2 — auto-skip to LOT_ALLOTMENT
+        if (offering && (offering.finalPrice || offering.isFinalized)) {
+          console.log(`[LOT-SELECTION] Auto-skipping Final Pass Lots for resample entry ${req.params.id} — offering already exists`);
+          await WorkflowEngine.transitionTo(
+            req.params.id,
+            'LOT_ALLOTMENT',
+            req.user.userId,
+            getWorkflowRole(req.user),
+            { autoSkipFinalPassLots: true, resample: true }
+          );
+        }
+      } catch (skipErr) {
+        console.log(`[LOT-SELECTION] Auto-skip note: ${skipErr.message}`);
+      }
+    }
+
     res.json({ message: 'Workflow transitioned successfully', nextStatus });
   } catch (error) {
     console.error('Error transitioning workflow:', error);
@@ -940,15 +1174,22 @@ router.post('/:id/lot-selection', authenticateToken, async (req, res) => {
 // Create cooking report (Owner/Admin)
 router.post('/:id/cooking-report', authenticateToken, async (req, res) => {
   try {
+    const workflowRole = getWorkflowRole(req.user);
     const reportData = {
       ...req.body,
       sampleEntryId: req.params.id // Keep as UUID string
     };
+    // Staff/quality supervisor should only submit "Cooking Done By".
+    // They cannot set final cooking status transitions.
+    if (['staff', 'quality_supervisor'].includes(workflowRole)) {
+      reportData.status = null;
+      reportData.cookingApprovedBy = null;
+    }
 
     const report = await CookingReportService.createCookingReport(
       reportData,
       req.user.userId, // Use userId from JWT token
-      getWorkflowRole(req.user)
+      workflowRole
     );
 
     res.status(201).json(report);
@@ -997,6 +1238,20 @@ router.post('/:id/final-price', authenticateToken, async (req, res) => {
 
     console.log(`[FINAL-PRICE] setFinalPrice succeeded. isFinalized in body: ${req.body.isFinalized}`);
 
+    if (req.body.resampleAfterFinal) {
+      const resampleUpdate = {
+        lotSelectionDecision: 'FAIL',
+        lotSelectionByUserId: req.user.userId,
+        lotSelectionAt: new Date(),
+        entryType: 'LOCATION_SAMPLE'
+      };
+      if (req.body.resampleCollectedBy) {
+        resampleUpdate.sampleCollectedBy = req.body.resampleCollectedBy;
+      }
+      await SampleEntryService.updateSampleEntry(req.params.id, resampleUpdate, req.user.userId);
+      console.log(`[FINAL-PRICE] Resample flagged for ${req.params.id}`);
+    }
+
     // After updating the final price, ALWAYS check if we can transition to LOT_ALLOTMENT
     if (req.body.isFinalized) {
       try {
@@ -1013,6 +1268,10 @@ router.post('/:id/final-price', authenticateToken, async (req, res) => {
             { finalPriceSet: true }
           );
           console.log(`[FINAL-PRICE] ✅ Transition to LOT_ALLOTMENT (Loading Lots) SUCCEEDED!`);
+        } else if (entry && entry.workflowStatus === 'LOT_ALLOTMENT' && req.body.resampleAfterFinal) {
+          // Resample on an entry already at LOT_ALLOTMENT — stay at LOT_ALLOTMENT.
+          // Offering price already exists, so it skips Final Lots and goes directly to Loading Lots.
+          console.log(`[FINAL-PRICE] ✅ Entry ${req.params.id} already at LOT_ALLOTMENT (resample) — staying at Loading Lots`);
         } else {
           console.log(`[FINAL-PRICE] ⚠️ Skipped transition - entry status is: ${entry ? entry.workflowStatus : 'NOT FOUND'}`);
         }

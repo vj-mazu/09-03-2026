@@ -4,7 +4,10 @@ const AuditService = require('./AuditService');
 const SampleEntryOffering = require('../models/SampleEntryOffering');
 
 const OFFER_KEYS = ['offer1', 'offer2', 'offer3'];
-const LOOSE_RATE_TYPES = new Set(['PD_LOOSE', 'MD_LOOSE']);
+const LF_RATE_TYPES = new Set(['PD_LOOSE', 'MD_LOOSE', 'PD_WB']);
+const EGB_RATE_TYPES = new Set(['PD_LOOSE', 'MD_LOOSE']);
+const hasLfForRateType = (value) => LF_RATE_TYPES.has(String(value || '').trim().toUpperCase());
+const hasEgbForRateType = (value) => EGB_RATE_TYPES.has(String(value || '').trim().toUpperCase());
 
 const toNumberOrDefault = (value, fallback = 0) => {
   if (value === undefined || value === null || value === '') return fallback;
@@ -138,12 +141,13 @@ const getActiveOffer = (versions = [], activeOfferKey) => {
 const buildOfferPayload = (priceData, existingOffer = {}, slotKey) => {
   const baseRateType = String(priceData.baseRateType || existingOffer.baseRateType || priceData.offerBaseRate || 'PD_LOOSE').trim().toUpperCase();
   const baseRateUnit = normalizeRateUnit(priceData.baseRateUnit || existingOffer.baseRateUnit || priceData.perUnit || 'per_bag');
-  const isLooseType = LOOSE_RATE_TYPES.has(baseRateType);
-  const egbType = isLooseType ? String(priceData.egbType || existingOffer.egbType || 'mill').trim().toLowerCase() : 'mill';
+  const hasLf = hasLfForRateType(baseRateType);
+  const hasEgb = hasEgbForRateType(baseRateType);
+  const egbType = hasEgb ? String(priceData.egbType || existingOffer.egbType || 'mill').trim().toLowerCase() : 'mill';
   const offerAmount = toNullableNumber(priceData.offerBaseRateValue ?? existingOffer.offerBaseRateValue ?? priceData.offerRate ?? existingOffer.offerRate);
   const hamaliAmount = toNullableNumber(priceData.hamali ?? priceData.hamaliValue ?? existingOffer.hamali);
   const brokerageAmount = toNullableNumber(priceData.brokerage ?? priceData.brokerageValue ?? existingOffer.brokerage);
-  const lfAmount = isLooseType ? toNullableNumber(priceData.lf ?? priceData.lfValue ?? existingOffer.lf) : 0;
+  const lfAmount = hasLf ? toNullableNumber(priceData.lf ?? priceData.lfValue ?? existingOffer.lf) : 0;
   const customDivisor = (
     baseRateUnit === 'per_kg' ||
     baseRateType === 'MD_LOOSE'
@@ -169,11 +173,11 @@ const buildOfferPayload = (priceData, existingOffer = {}, slotKey) => {
     brokerageEnabled: toBoolean(priceData.brokerageEnabled, toBoolean(existingOffer.brokerageEnabled, false)),
     brokerage: brokerageAmount,
     brokerageUnit: normalizeToggleUnit(priceData.brokerageUnit || existingOffer.brokerageUnit || 'per_bag', 'per_bag'),
-    lfEnabled: isLooseType ? toBoolean(priceData.lfEnabled, toBoolean(existingOffer.lfEnabled, false)) : false,
+    lfEnabled: hasLf ? toBoolean(priceData.lfEnabled, toBoolean(existingOffer.lfEnabled, false)) : false,
     lf: lfAmount,
-    lfUnit: isLooseType ? normalizeToggleUnit(priceData.lfUnit || existingOffer.lfUnit || 'per_bag', 'per_bag') : 'per_bag',
+    lfUnit: hasLf ? normalizeToggleUnit(priceData.lfUnit || existingOffer.lfUnit || 'per_bag', 'per_bag') : 'per_bag',
     egbType,
-    egbValue: isLooseType && egbType === 'purchase'
+    egbValue: hasEgb && egbType === 'purchase'
       ? toNumberOrDefault(priceData.egbValue ?? priceData.egb ?? existingOffer.egbValue, 0)
       : 0,
     customDivisor,
@@ -225,7 +229,8 @@ const mirrorOfferToColumns = (offer) => {
   }
 
   const hamaliValue = toNumberOrDefault(offer.hamali, 0);
-  const isLooseType = LOOSE_RATE_TYPES.has(offer.baseRateType);
+  const hasLf = hasLfForRateType(offer.baseRateType);
+  const hasEgb = hasEgbForRateType(offer.baseRateType);
 
   return {
     offerRate: offer.offerBaseRateValue,
@@ -243,11 +248,11 @@ const mirrorOfferToColumns = (offer) => {
     brokerage: toNumberOrDefault(offer.brokerage, 0),
     brokerageEnabled: toBoolean(offer.brokerageEnabled, false),
     brokerageUnit: normalizeToggleUnit(offer.brokerageUnit, 'per_bag'),
-    lf: isLooseType ? toNumberOrDefault(offer.lf, 0) : 0,
-    lfEnabled: isLooseType ? toBoolean(offer.lfEnabled, false) : false,
-    lfUnit: isLooseType ? normalizeToggleUnit(offer.lfUnit, 'per_bag') : 'per_bag',
-    egbValue: isLooseType && offer.egbType === 'purchase' ? toNumberOrDefault(offer.egbValue, 0) : 0,
-    egbType: isLooseType ? (offer.egbType || 'mill') : 'mill',
+    lf: hasLf ? toNumberOrDefault(offer.lf, 0) : 0,
+    lfEnabled: hasLf ? toBoolean(offer.lfEnabled, false) : false,
+    lfUnit: hasLf ? normalizeToggleUnit(offer.lfUnit, 'per_bag') : 'per_bag',
+    egbValue: hasEgb && offer.egbType === 'purchase' ? toNumberOrDefault(offer.egbValue, 0) : 0,
+    egbType: hasEgb ? (offer.egbType || 'mill') : 'mill',
     customDivisor: toNullableNumber(offer.customDivisor),
     cdEnabled: toBoolean(offer.cdEnabled, false),
     cdValue: toNumberOrDefault(offer.cdValue, 0),
