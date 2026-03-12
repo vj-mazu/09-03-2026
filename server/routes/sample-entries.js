@@ -1102,14 +1102,8 @@ router.post('/:id/lot-selection', authenticateToken, async (req, res) => {
     } else if (decision === 'PASS_WITH_COOKING') {
       nextStatus = 'COOKING_REPORT';
     } else if (decision === 'FAIL') {
-      if (entry.entryType === 'RICE_SAMPLE') {
-        nextStatus = 'FAILED';
-      } else if (entry.lotSelectionDecision === 'FAIL') {
-        // If a re-sample is failed again, close it as complete failure.
-        nextStatus = 'FAILED';
-      } else {
-        nextStatus = 'QUALITY_CHECK';
-      }
+      // FAIL in lot selection means final failure (no resample) for normal flow.
+      nextStatus = 'FAILED';
     } else if (decision === 'SOLDOUT') {
       nextStatus = 'FAILED';
     } else {
