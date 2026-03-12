@@ -1024,7 +1024,7 @@ const SampleEntryPage: React.FC<{
               const isAssignedToCurrentStaff =
                 user?.role !== 'staff'
                 || (!!entry.sampleCollectedBy && !!user?.username && entry.sampleCollectedBy.trim().toLowerCase() === user.username.trim().toLowerCase());
-              const isPendingPaddyResample = filterEntryType !== 'RICE_SAMPLE' && entry.lotSelectionDecision === 'FAIL' && !resampleQualitySaved && !!entry.sampleCollectedBy && isAssignedToCurrentStaff;
+              const isPendingPaddyResample = filterEntryType !== 'RICE_SAMPLE' && entry.lotSelectionDecision === 'FAIL' && entry.workflowStatus !== 'FAILED' && !resampleQualitySaved && !!entry.sampleCollectedBy && isAssignedToCurrentStaff;
               if (entry.workflowStatus !== 'STAFF_ENTRY' && !isPendingPaddyResample) return false;
             }
             if (activeTab === 'LOCATION_SAMPLE') {
@@ -1037,13 +1037,14 @@ const SampleEntryPage: React.FC<{
               const isAssignedToCurrentStaff =
                 user?.role !== 'staff'
                 || (!!entry.sampleCollectedBy && !!user?.username && entry.sampleCollectedBy.trim().toLowerCase() === user.username.trim().toLowerCase());
-              const isPendingPaddyResample = filterEntryType !== 'RICE_SAMPLE' && entry.lotSelectionDecision === 'FAIL' && !resampleQualitySaved && !!entry.sampleCollectedBy && isAssignedToCurrentStaff;
+              const isPendingPaddyResample = filterEntryType !== 'RICE_SAMPLE' && entry.lotSelectionDecision === 'FAIL' && entry.workflowStatus !== 'FAILED' && !resampleQualitySaved && !!entry.sampleCollectedBy && isAssignedToCurrentStaff;
               if (entry.workflowStatus !== 'STAFF_ENTRY' && !isPendingPaddyResample) return false;
               if (!isPendingPaddyResample && hasQuality) return false;
             }
             if (activeTab === 'SAMPLE_BOOK') {
               // Hide pending-resample entries from Sample Book — they should only appear in Location Sample tab
-              if (filterEntryType !== 'RICE_SAMPLE' && entry.lotSelectionDecision === 'FAIL') {
+              // But always show genuinely FAILED entries (killed from Pending Selection) in Sample Book
+              if (filterEntryType !== 'RICE_SAMPLE' && entry.lotSelectionDecision === 'FAIL' && entry.workflowStatus !== 'FAILED') {
                 const qp = (entry as any).qualityParameters;
                 const resampleQualitySaved = !!entry.lotSelectionAt && qp
                   && getTimeValue(qp.updatedAt || qp.createdAt) >= getTimeValue(entry.lotSelectionAt);
@@ -1148,7 +1149,8 @@ const SampleEntryPage: React.FC<{
                             const resampleAttempts = Math.max(0, Number((entry as any).qualityReportAttempts || 0));
                             const isPaddyResampleWorkflow =
                               filterEntryType !== 'RICE_SAMPLE'
-                              && entry.lotSelectionDecision === 'FAIL';
+                              && entry.lotSelectionDecision === 'FAIL'
+                              && entry.workflowStatus !== 'FAILED';
                             const resampleQualitySaved =
                               isPaddyResampleWorkflow
                               && !!entry.lotSelectionAt
@@ -1339,7 +1341,7 @@ const SampleEntryPage: React.FC<{
                                           }}
                                         >
                                           {showDetailedQualityStatus ? (
-                                            qualityAttemptLabels.map((label, idx) => (
+                                            qualityAttemptLabels.map((label: string, idx: number) => (
                                               <span
                                                 key={`${entry.id}-quality-label-${idx}`}
                                                 style={{
