@@ -1185,7 +1185,7 @@ const FinalPassLots: React.FC<FinalPassLotsProps> = ({ entryType, excludeEntryTy
                                             Sold Out
                                           </button>
                                           <button
-                                            onClick={() => handleLotAction(entry.id, 'FAIL')}
+                                            onClick={() => handleLotAction(entry.id, 'RESAMPLE')}
                                             style={{ fontSize: '10px', padding: '3px 7px', backgroundColor: '#ef6c00', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer', fontWeight: '700' }}
                                           >
                                             Re-sample

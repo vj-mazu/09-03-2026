@@ -1102,8 +1102,9 @@ router.post('/:id/lot-selection', authenticateToken, async (req, res) => {
     } else if (decision === 'PASS_WITH_COOKING') {
       nextStatus = 'COOKING_REPORT';
     } else if (decision === 'FAIL') {
-      // FAIL in lot selection means final failure (no resample) for normal flow.
       nextStatus = 'FAILED';
+    } else if (decision === 'RESAMPLE') {
+      nextStatus = 'STAFF_ENTRY';
     } else if (decision === 'SOLDOUT') {
       nextStatus = 'FAILED';
     } else {
@@ -1115,14 +1116,14 @@ router.post('/:id/lot-selection', authenticateToken, async (req, res) => {
       nextStatus,
       req.user.userId, // Use userId from JWT token
       getWorkflowRole(req.user),
-      { lotSelectionDecision: decision }
+      { lotSelectionDecision: decision === 'RESAMPLE' ? 'FAIL' : decision }
     );
 
     // Explicitly update the lot selection fields on the SampleEntry
     await SampleEntryService.updateSampleEntry(
       req.params.id,
       {
-        lotSelectionDecision: decision,
+        lotSelectionDecision: decision === 'RESAMPLE' ? 'FAIL' : decision,
         lotSelectionByUserId: req.user.userId,
         lotSelectionAt: new Date()
       },

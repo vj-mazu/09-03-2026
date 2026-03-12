@@ -82,6 +82,20 @@ const WORKFLOW_TRANSITIONS = [
     allowedRoles: ['admin', 'manager'],
     requiredData: []
   },
+  // Re-sample: Allow LOT_SELECTION → STAFF_ENTRY for resample workflow
+  {
+    fromStatus: 'LOT_SELECTION',
+    toStatus: 'STAFF_ENTRY',
+    allowedRoles: ['admin', 'manager'],
+    requiredData: []
+  },
+  // Re-sample: Allow FINAL_REPORT → STAFF_ENTRY for resample workflow
+  {
+    fromStatus: 'FINAL_REPORT',
+    toStatus: 'STAFF_ENTRY',
+    allowedRoles: ['admin', 'manager'],
+    requiredData: []
+  },
   {
     fromStatus: 'COOKING_REPORT',
     toStatus: 'LOT_SELECTION',
